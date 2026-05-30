@@ -1,8 +1,10 @@
+from typing import Optional, List
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from crawler import crawl_reddit
 from extractors import extract_intel
+from generator import draft_post
 
 app = FastAPI(title="Redditscan API")
 
@@ -16,7 +18,7 @@ app.add_middleware(
 
 class SearchRequest(BaseModel):
     query: str
-    subreddits: list[str] = ["SaaS", "entrepreneur", "productivity", "startups"]
+    subreddits: List[str] = ["SaaS", "entrepreneur", "productivity", "startups"]
     expand: bool = False  # run extra Serper queries for broader coverage
 
 
@@ -42,3 +44,18 @@ async def search(req: SearchRequest):
     intel["expanded"] = req.expand
 
     return intel
+
+
+class DraftRequest(BaseModel):
+    idea: str
+    context_snippets: Optional[List[str]] = None  # optional Reddit quotes for tone
+
+
+@app.post("/draft")
+def draft(req: DraftRequest):
+    if not req.idea.strip():
+        raise HTTPException(status_code=400, detail="Idea cannot be empty")
+    try:
+        return draft_post(req.idea, req.context_snippets)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Draft failed: {e}")

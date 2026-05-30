@@ -57,6 +57,8 @@ function ResultCard({ item }: { item: ResultItem }) {
   )
 }
 
+type Draft = { draft: string; word_count: number; tone: string }
+
 export default function App() {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
@@ -64,6 +66,13 @@ export default function App() {
   const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState<Tab>('quotes')
   const [copied, setCopied] = useState(false)
+
+  // Notepad state
+  const [idea, setIdea] = useState('')
+  const [drafting, setDrafting] = useState(false)
+  const [draft, setDraft] = useState<Draft | null>(null)
+  const [draftError, setDraftError] = useState('')
+  const [draftCopied, setDraftCopied] = useState(false)
 
   // Auto-search from URL param: ?q=Notion
   useEffect(() => {
@@ -115,6 +124,40 @@ export default function App() {
     navigator.clipboard.writeText(window.location.href)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  async function generateDraft() {
+    if (!idea.trim()) return
+    setDrafting(true)
+    setDraftError('')
+    setDraft(null)
+    try {
+      // Use top quotes as tone context if we have intel
+      const context_snippets = intel
+        ? intel.quotes.slice(0, 5).map(q => q.text)
+        : null
+      const res = await fetch(`${API}/draft`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idea, context_snippets }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.detail || 'Draft failed')
+      }
+      setDraft(await res.json())
+    } catch (e: unknown) {
+      setDraftError(e instanceof Error ? e.message : 'Something went wrong')
+    } finally {
+      setDrafting(false)
+    }
+  }
+
+  function copyDraft() {
+    if (!draft) return
+    navigator.clipboard.writeText(draft.draft)
+    setDraftCopied(true)
+    setTimeout(() => setDraftCopied(false), 2000)
   }
 
   const activeResults = intel ? intel[activeTab] : []
@@ -229,6 +272,60 @@ export default function App() {
             )}
           </div>
         )}
+
+        {/* Notepad — always visible */}
+        <div className="mt-10 border-t border-gray-200 pt-8">
+          <h2 className="text-lg font-semibold text-gray-900">📝 Notepad</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Drop a 2-line idea. We'll draft a Reddit-style post that sounds human.
+            {intel && ' Tone will match the quotes above.'}
+          </p>
+
+          <textarea
+            value={idea}
+            onChange={e => setIdea(e.target.value)}
+            placeholder="e.g. I switched from Notion to Obsidian after 6 months — speed killed it for me"
+            rows={3}
+            className="mt-3 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
+          />
+
+          <div className="mt-2 flex items-center justify-between">
+            <span className="text-xs text-gray-400">
+              {idea.trim().split(/\s+/).filter(Boolean).length} words
+            </span>
+            <button
+              onClick={generateDraft}
+              disabled={drafting || !idea.trim()}
+              className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors"
+            >
+              {drafting ? 'Drafting...' : 'Generate post →'}
+            </button>
+          </div>
+
+          {draftError && (
+            <p className="mt-3 text-sm text-red-500">{draftError}</p>
+          )}
+
+          {draft && (
+            <div className="mt-4 border border-gray-200 rounded-lg p-4 bg-white">
+              <p className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">
+                {draft.draft}
+              </p>
+              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-3 text-xs text-gray-500">
+                <span>{draft.word_count} words</span>
+                <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
+                  tone: {draft.tone}
+                </span>
+                <button
+                  onClick={copyDraft}
+                  className="ml-auto text-orange-500 hover:underline"
+                >
+                  {draftCopied ? '✓ Copied!' : 'Copy draft ↗'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
