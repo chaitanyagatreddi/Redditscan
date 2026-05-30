@@ -35,11 +35,14 @@ async def search_reddit(client: httpx.AsyncClient, query: str) -> list[dict]:
         sub_match = re.search(r"reddit\.com/r/([^/]+)", url)
         subreddit = f"r/{sub_match.group(1)}" if sub_match else "r/unknown"
 
+        # Strip scheme + host so extractors can prepend https://reddit.com cleanly
+        permalink = re.sub(r"^https?://(www\.|old\.|new\.)?reddit\.com", "", url)
+
         posts.append({
             "title": item.get("title", ""),
             "selftext": item.get("snippet", ""),
             "score": 0,
-            "permalink": url,
+            "permalink": permalink,
             "subreddit_name_prefixed": subreddit,
             "url": url,
         })
@@ -47,21 +50,26 @@ async def search_reddit(client: httpx.AsyncClient, query: str) -> list[dict]:
     return posts
 
 
-async def crawl_reddit(query: str, subreddits: list[str]) -> list[dict]:
+BASE_QUERIES = ["", "pricing review", "complaint alternative switched"]
+EXPAND_QUERIES = [
+    "worth it honest",
+    "vs alternative",
+    "experience after months",
+    "stopped using cancelled",
+    "is good or bad",
+]
+
+
+async def crawl_reddit(query: str, subreddits: list[str], expand: bool = False) -> list[dict]:
     all_posts = []
     seen_urls = set()
 
-    async with httpx.AsyncClient() as client:
-        # Broad search
-        posts = await search_reddit(client, query)
-        for p in posts:
-            if p["url"] not in seen_urls:
-                seen_urls.add(p["url"])
-                all_posts.append(p)
+    queries = BASE_QUERIES + (EXPAND_QUERIES if expand else [])
 
-        # Targeted search: pricing/complaints/comparisons
-        for extra in ["pricing review", "complaint alternative switched"]:
-            posts = await search_reddit(client, f"{query} {extra}")
+    async with httpx.AsyncClient() as client:
+        for extra in queries:
+            q = f"{query} {extra}".strip()
+            posts = await search_reddit(client, q)
             for p in posts:
                 if p["url"] not in seen_urls:
                     seen_urls.add(p["url"])

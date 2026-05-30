@@ -14,6 +14,7 @@ type Intel = {
   query: string
   total_posts_scanned: number
   subreddits_searched: string[]
+  expanded: boolean
   pricing: ResultItem[]
   complaints: ResultItem[]
   comparisons: ResultItem[]
@@ -74,16 +75,16 @@ export default function App() {
     }
   }, [])
 
-  async function doSearch(q: string) {
+  async function doSearch(q: string, expand = false) {
     if (!q.trim()) return
     setLoading(true)
     setError('')
-    setIntel(null)
+    if (!expand) setIntel(null)
     try {
       const res = await fetch(`${API}/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: q }),
+        body: JSON.stringify({ query: q, expand }),
       })
       if (!res.ok) {
         const err = await res.json()
@@ -98,6 +99,17 @@ export default function App() {
       setLoading(false)
     }
   }
+
+  // Expand-search preview shows when results are thin and we haven't expanded yet
+  const EXPAND_QUERIES = [
+    'worth it honest',
+    'vs alternative',
+    'experience after months',
+    'stopped using cancelled',
+    'is good or bad',
+  ]
+  const showExpandPreview =
+    intel && !intel.expanded && intel.total_posts_scanned < 15
 
   function handleShare() {
     navigator.clipboard.writeText(window.location.href)
@@ -156,6 +168,35 @@ export default function App() {
                 {copied ? '✓ Copied!' : 'Share results ↗'}
               </button>
             </div>
+
+            {/* Expand search preview */}
+            {showExpandPreview && (
+              <div className="mb-4 border border-orange-200 bg-orange-50 rounded-lg p-4">
+                <p className="text-sm text-gray-800 font-medium">
+                  Only {intel.total_posts_scanned} posts found — want a wider net?
+                </p>
+                <p className="text-xs text-gray-600 mt-1">
+                  Expanding runs 5 more searches:
+                </p>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {EXPAND_QUERIES.map(q => (
+                    <span
+                      key={q}
+                      className="text-xs bg-white border border-orange-200 text-orange-700 px-2 py-0.5 rounded"
+                    >
+                      "{intel.query} {q}"
+                    </span>
+                  ))}
+                </div>
+                <button
+                  onClick={() => doSearch(intel.query, true)}
+                  disabled={loading}
+                  className="mt-3 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50 transition-colors"
+                >
+                  {loading ? 'Expanding...' : 'Expand search →'}
+                </button>
+              </div>
+            )}
 
             {/* Tabs */}
             <div className="flex gap-1 mb-4 border-b border-gray-200">

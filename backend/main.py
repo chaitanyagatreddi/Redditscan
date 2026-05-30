@@ -17,6 +17,7 @@ app.add_middleware(
 class SearchRequest(BaseModel):
     query: str
     subreddits: list[str] = ["SaaS", "entrepreneur", "productivity", "startups"]
+    expand: bool = False  # run extra Serper queries for broader coverage
 
 
 @app.get("/health")
@@ -29,7 +30,7 @@ async def search(req: SearchRequest):
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    posts = await crawl_reddit(req.query, req.subreddits)
+    posts = await crawl_reddit(req.query, req.subreddits, expand=req.expand)
 
     if not posts:
         raise HTTPException(status_code=404, detail="No Reddit posts found")
@@ -38,5 +39,6 @@ async def search(req: SearchRequest):
     intel["query"] = req.query
     intel["subreddits_searched"] = req.subreddits
     intel["total_posts_scanned"] = len(posts)
+    intel["expanded"] = req.expand
 
     return intel
