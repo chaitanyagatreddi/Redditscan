@@ -1,28 +1,27 @@
 # Redditscan
 
-> Reddit is the last place where people tell the truth about software.
+> Draft Reddit posts and comments that actually fit — without AI-generated slop that gets flagged.
 
-Mine competitor pricing, complaints, and comparisons from Reddit — the intel G2, Gartner, and Trustpilot don't have.
+Redditscan crawls a subreddit, shows you what's working (top posts, tone, format), and gives you a drafting pad to write your own post alongside the research.
+
+No AI writes your post. You do. That's the point — authentic posts don't get banned.
 
 ```
-Search "Notion" →
-  Pricing:     "I pay $16/mo for plus" (847 upvotes, r/SaaS)
-  Complaints:  "support takes 3+ days to respond" (312 upvotes)
-  Comparisons: "chose Notion over Coda because offline mode" (201 upvotes)
+Target: r/SaaS  →  Topic: "launched my indie app"
+Left panel:  Top posts in r/SaaS this week (tone, format, what scored)
+Right panel: Your draft — write something that fits
 ```
 
-## Why
+## Why not just use ChatGPT?
 
-Review sites are sanitized. Vendor pages lie. Reddit says it raw — real pricing, honest complaints, switching reasons. No sales team can edit it.
-
-This tool crawls Reddit and structures that signal for you.
+AI-written Reddit posts get flagged, downvoted, and banned. Redditors can smell them. This tool gives you the research so you write something that sounds human — because it is.
 
 ## Stack
 
 - **Frontend**: React + Vite + Tailwind
 - **Backend**: FastAPI (Python)
 - **Crawler**: httpx → Reddit public JSON API (no API key needed)
-- **Extraction**: pure regex — no LLM, no cost
+- **Extraction**: pure regex — pricing, complaints, comparisons from threads
 
 ## Getting Started
 
@@ -38,26 +37,26 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`, search any product name.
+Open `http://localhost:5173`, pick a subreddit and topic.
 
 ## Architecture
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full system diagram and data flow.
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full system diagram.
 
-## What it extracts
+## Features
 
-| Signal | Example |
-|--------|---------|
-| Pricing | "$49/mo per seat", "costs $8/user/month" |
-| Complaints | "slow on large databases", "cancelled after support ghosted me" |
-| Comparisons | "switched from X to Y because...", "chose X over Y" |
-| Quotes | Top-scored comments mentioning the product |
+| Feature | What it does |
+|---------|-------------|
+| Subreddit feed | Top posts from your target sub — tone, format, score |
+| Intel extraction | Pricing, complaints, comparisons from threads |
+| Drafting pad | Write your post alongside the research |
+| No AI writing | You write. Tool just gives you context. |
 
 ## Roadmap
 
-- [ ] v1 — live crawl, structured output, React UI
-- [ ] v1.1 — SQLite cache (24hr TTL), subreddit filter
-- [ ] v2 — drafting pad: research + write Reddit posts side by side
+- [ ] v1 — subreddit crawler + drafting pad side by side
+- [ ] v1.1 — intel extraction (pricing, complaints, comparisons)
+- [ ] v2 — comment drafter: find relevant threads, draft a reply
 
 ## Contributing
 
