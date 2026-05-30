@@ -18,26 +18,43 @@ AI-written Reddit posts get flagged, downvoted, and banned. Redditors can smell 
 
 ## Stack
 
-- **Frontend**: React + Vite + Tailwind
+- **Frontend**: React + Vite + Tailwind v4
 - **Backend**: FastAPI (Python)
-- **Crawler**: httpx → Reddit public JSON API (no API key needed)
-- **Extraction**: pure regex — pricing, complaints, comparisons from threads
+- **Crawler**: httpx → [Serper.dev](https://serper.dev) (Google Search API, 2500 free searches)
+- **Extraction**: pure regex — pricing, complaints, comparisons, quotes
 
-## Getting Started
+## Quick start
+
+**Prereqs:** Python 3.10+, Node 18+, and a free [Serper.dev](https://serper.dev) API key (sign in with Google).
 
 ```bash
-# Backend
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload
+git clone https://github.com/chaitanyagatreddi/Redditscan.git
+cd Redditscan
+```
 
-# Frontend
+**1. Backend**
+
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env
+# open .env and paste your SERPER_API_KEY
+uvicorn main:app --reload --port 8000
+```
+
+**2. Frontend** (in a new terminal)
+
+```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`, pick a subreddit and topic.
+Open `http://localhost:5173` and search a product (e.g. `Notion`, `Linear`, `Salesforce`).
+
+Share a result by clicking **Share results ↗** — the URL includes `?q=<product>` and auto-runs the search when opened.
 
 ## Architecture
 
