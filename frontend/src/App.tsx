@@ -17,15 +17,17 @@ type Intel = {
   pricing: ResultItem[]
   complaints: ResultItem[]
   comparisons: ResultItem[]
+  praise: ResultItem[]
   quotes: ResultItem[]
 }
 
-type Tab = 'pricing' | 'complaints' | 'comparisons' | 'quotes'
+type Tab = 'pricing' | 'complaints' | 'comparisons' | 'praise' | 'quotes'
 
 const TAB_LABELS: Record<Tab, string> = {
   pricing: '💰 Pricing',
   complaints: '😤 Complaints',
   comparisons: '⚖️ Comparisons',
+  praise: '💚 Praise',
   quotes: '💬 Quotes',
 }
 

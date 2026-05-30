@@ -20,6 +20,15 @@ COMPLAINT_KEYWORDS = {
     "switching":   ["switched away", "cancelled", "left", "moved to", "migrated from", "stopped using", "churned"],
 }
 
+# --- Praise ---
+PRAISE_KEYWORDS = [
+    "love it", "love this", "game changer", "game-changer", "worth it", "worth every",
+    "best decision", "highly recommend", "can't recommend", "cant recommend",
+    "blown away", "amazing", "fantastic", "lifesaver", "life saver",
+    "couldn't be happier", "couldnt be happier", "no regrets", "huge fan",
+    "obsessed with", "favorite tool", "favourite tool",
+]
+
 # --- Comparisons ---
 COMPARISON_PATTERNS = [
     r'\b(vs\.?|versus)\b',
@@ -149,10 +158,39 @@ def extract_quotes(posts: list[dict], query: str) -> list[dict]:
     return results[:10]
 
 
+def extract_praise(posts: list[dict], query: str) -> list[dict]:
+    results = []
+    q = query.lower()
+    for post in posts:
+        text = get_text(post)
+        if q not in text:
+            continue
+        sentences = extract_sentences(text)
+        for s in sentences:
+            for kw in PRAISE_KEYWORDS:
+                if kw in s:
+                    results.append({
+                        "text": s,
+                        "source_url": f"https://reddit.com{post.get('permalink', '')}",
+                        "reddit_score": score_post(post),
+                        "subreddit": post.get("subreddit_name_prefixed", ""),
+                    })
+                    break
+    results.sort(key=lambda x: x["reddit_score"], reverse=True)
+    seen = set()
+    unique = []
+    for r in results:
+        if r["text"] not in seen:
+            seen.add(r["text"])
+            unique.append(r)
+    return unique[:10]
+
+
 def extract_intel(posts: list[dict], query: str) -> dict:
     return {
         "pricing":     extract_pricing(posts, query),
         "complaints":  extract_complaints(posts, query),
         "comparisons": extract_comparisons(posts, query),
+        "praise":      extract_praise(posts, query),
         "quotes":      extract_quotes(posts, query),
     }
