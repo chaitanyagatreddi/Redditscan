@@ -1,20 +1,23 @@
 # Redditscan
 
-> Draft Reddit posts and comments that actually fit — without AI-generated slop that gets flagged.
+> **Reddit, but focus mode.**
 
-Redditscan crawls a subreddit, shows you what's working (top posts, tone, format), and gives you a drafting pad to write your own post alongside the research.
-
-No AI writes your post. You do. That's the point — authentic posts don't get banned.
+Same Reddit. Noise stripped. No jokes, no "this!", no 200-comment tangents — just the sentences with money in them, the complaints, the comparisons, the praise.
 
 ```
-Target: r/SaaS  →  Topic: "launched my indie app"
-Left panel:  Top posts in r/SaaS this week (tone, format, what scored)
-Right panel: Your draft — write something that fits
+Search: "Notion"
+→ 💰 Pricing       the sentences with $/mo in them
+→ 😤 Complaints    what people actually hate
+→ ⚖️ Comparisons   "I switched from X to Y because…"
+→ 💚 Praise        the rare honest love
+→ 💬 Quotes        top post titles, ranked
 ```
 
-## Why not just use ChatGPT?
+## Who it's for
 
-AI-written Reddit posts get flagged, downvoted, and banned. Redditors can smell them. This tool gives you the research so you write something that sounds human — because it is.
+PMs doing competitor research. Founders pricing a product. GTM folks writing positioning. Sales reps prepping for a call.
+
+Anyone who'd otherwise be Ctrl+F'ing through 15 Reddit threads at 11pm.
 
 ## Stack
 
@@ -64,16 +67,18 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full system diagram.
 
 | Feature | What it does |
 |---------|-------------|
-| Subreddit feed | Top posts from your target sub — tone, format, score |
-| Intel extraction | Pricing, complaints, comparisons from threads |
-| Drafting pad | Write your post alongside the research |
-| No AI writing | You write. Tool just gives you context. |
+| 💰 Pricing | Sentences with `$/mo`, `per seat`, free tier mentions |
+| 😤 Complaints | Categorized: performance, support, pricing, features, switching |
+| ⚖️ Comparisons | "vs", "switched from", "alternative to" phrases |
+| 💚 Praise | Rare positive sentiment — "worth it", "game changer", etc. |
+| 💬 Quotes | Top Reddit post titles for the query |
+| 🔗 Shareable | `?q=<product>` URL auto-runs the search |
 
 ## Roadmap
 
-- [ ] v1 — subreddit crawler + drafting pad side by side
-- [ ] v1.1 — intel extraction (pricing, complaints, comparisons)
-- [ ] v2 — comment drafter: find relevant threads, draft a reply
+- [x] v1 — focus-mode intel extraction (pricing, complaints, comparisons, praise, quotes)
+- [ ] v1.1 — better extractors (LLM-assisted, optional)
+- [ ] v2 — multi-product comparison view (paste 3 products, get a matrix)
 
 ## Contributing
 

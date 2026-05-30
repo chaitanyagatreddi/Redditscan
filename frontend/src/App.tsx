@@ -114,7 +114,7 @@ export default function App() {
         <div className="max-w-3xl mx-auto px-4 py-6">
           <h1 className="text-2xl font-bold text-gray-900">🔍 Redditscan</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Real pricing, honest complaints, and comparisons from Reddit
+            Reddit, but focus mode — pricing, complaints, comparisons, no noise.
           </p>
         </div>
       </div>
