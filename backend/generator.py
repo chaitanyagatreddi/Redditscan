@@ -6,7 +6,16 @@ import os
 from typing import Optional, List
 from openai import OpenAI
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+_client = None
+
+def get_client() -> OpenAI:
+    global _client
+    if _client is None:
+        key = os.getenv("OPENAI_API_KEY")
+        if not key:
+            raise RuntimeError("OPENAI_API_KEY not set in environment")
+        _client = OpenAI(api_key=key)
+    return _client
 
 SYSTEM_PROMPT = """You write Reddit posts that sound human and don't get flagged as AI.
 
@@ -35,7 +44,7 @@ def draft_post(idea: str, context_snippets: Optional[List[str]] = None) -> dict:
 
     user_prompt = f"Idea:\n{idea}{context}\n\nWrite the post."
 
-    resp = client.chat.completions.create(
+    resp = get_client().chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
