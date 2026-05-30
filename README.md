@@ -25,6 +25,9 @@ Anyone who'd otherwise be Ctrl+F'ing through 15 Reddit threads at 11pm.
 - **Backend**: FastAPI (Python)
 - **Crawler**: httpx → [Serper.dev](https://serper.dev) (Google Search API, 2500 free searches)
 - **Extraction**: pure regex — pricing, complaints, comparisons, quotes
+- **Drafter**: OpenAI gpt-4o-mini (~$0.00003 per draft)
+
+> **Why not the Reddit API?** Reddit's [Responsible Builder Policy](https://www.reddit.com/r/redditdev/comments/1oug31u/introducing_the_responsible_builder_policy_new/) (Nov 2025) gated self-serve API access behind manual approval. We hit Reddit through Google search results instead — no keys, no waiting list.
 
 ## Quick start
 
