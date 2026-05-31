@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from crawler import crawl_reddit
 from extractors import extract_intel
-from generator import draft_post
+from generator import draft_post, draft_comment
 
 app = FastAPI(title="Redditscan API")
 
@@ -59,3 +59,18 @@ def draft(req: DraftRequest):
         return draft_post(req.idea, req.context_snippets)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Draft failed: {e}")
+
+
+class CommentRequest(BaseModel):
+    post: str    # the Reddit post being replied to
+    intent: str  # what the user wants to say
+
+
+@app.post("/comment")
+def comment(req: CommentRequest):
+    if not req.post.strip() or not req.intent.strip():
+        raise HTTPException(status_code=400, detail="Post and intent cannot be empty")
+    try:
+        return draft_comment(req.post, req.intent)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Comment draft failed: {e}")

@@ -31,6 +31,21 @@ Rules:
 Output ONLY the post body. No title, no preamble, no markdown."""
 
 
+COMMENT_SYSTEM_PROMPT = """You write Reddit comments that sound human and don't get flagged.
+
+Rules:
+- 50-150 words, almost always shorter than the post
+- NEVER open with "Great post!" or "This!" or "+1" — Reddit hates that
+- Reference something SPECIFIC from the post (a phrase, a claim, a number) in the first sentence
+- Casual tone, lowercase ok, contractions, no emoji unless natural
+- Add a personal anecdote, a counter-point, a clarifying question, or a related experience
+- Don't moralize, don't lecture
+- Can end with a follow-up question if it feels natural — don't force it
+- Sound like a real Redditor typing on their phone
+
+Output ONLY the comment body. No preamble, no markdown."""
+
+
 def draft_post(idea: str, context_snippets: Optional[List[str]] = None) -> dict:
     """
     idea: 2-line user input (what they want to say)
@@ -57,6 +72,34 @@ def draft_post(idea: str, context_snippets: Optional[List[str]] = None) -> dict:
     word_count = len(draft.split())
     tone = detect_tone(draft)
     return {"draft": draft, "word_count": word_count, "tone": tone}
+
+
+def draft_comment(post: str, intent: str) -> dict:
+    """
+    post: the Reddit post text the user is replying to
+    intent: 1-2 lines describing what the user wants to say
+    Returns: { draft, word_count, tone }
+    """
+    user_prompt = (
+        f"The Reddit post I want to reply to:\n\"\"\"\n{post.strip()}\n\"\"\"\n\n"
+        f"What I want to say in my comment:\n{intent.strip()}\n\n"
+        "Write the comment."
+    )
+    resp = get_client().chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": COMMENT_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.8,
+        max_tokens=300,
+    )
+    draft = resp.choices[0].message.content.strip()
+    return {
+        "draft": draft,
+        "word_count": len(draft.split()),
+        "tone": detect_tone(draft),
+    }
 
 
 def detect_tone(text: str) -> str:

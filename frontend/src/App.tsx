@@ -74,6 +74,14 @@ export default function App() {
   const [draftError, setDraftError] = useState('')
   const [draftCopied, setDraftCopied] = useState(false)
 
+  // Comment generator state
+  const [postText, setPostText] = useState('')
+  const [intent, setIntent] = useState('')
+  const [commenting, setCommenting] = useState(false)
+  const [comment, setComment] = useState<Draft | null>(null)
+  const [commentError, setCommentError] = useState('')
+  const [commentCopied, setCommentCopied] = useState(false)
+
   // Auto-search from URL param: ?q=Notion
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -158,6 +166,36 @@ export default function App() {
     navigator.clipboard.writeText(draft.draft)
     setDraftCopied(true)
     setTimeout(() => setDraftCopied(false), 2000)
+  }
+
+  async function generateComment() {
+    if (!postText.trim() || !intent.trim()) return
+    setCommenting(true)
+    setCommentError('')
+    setComment(null)
+    try {
+      const res = await fetch(`${API}/comment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post: postText, intent }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.detail || 'Comment failed')
+      }
+      setComment(await res.json())
+    } catch (e: unknown) {
+      setCommentError(e instanceof Error ? e.message : 'Something went wrong')
+    } finally {
+      setCommenting(false)
+    }
+  }
+
+  function copyComment() {
+    if (!comment) return
+    navigator.clipboard.writeText(comment.draft)
+    setCommentCopied(true)
+    setTimeout(() => setCommentCopied(false), 2000)
   }
 
   const activeResults = intel ? intel[activeTab] : []
@@ -321,6 +359,70 @@ export default function App() {
                   className="ml-auto text-orange-500 hover:underline"
                 >
                   {draftCopied ? '✓ Copied!' : 'Copy draft ↗'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Comment generator */}
+        <div className="mt-10 border-t border-gray-200 pt-8">
+          <h2 className="text-lg font-semibold text-gray-900">💬 Reply to a post</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Paste a Reddit post + what you want to say. We draft a comment that fits.
+          </p>
+
+          <label className="block mt-4 text-xs font-medium text-gray-600">
+            The Reddit post
+          </label>
+          <textarea
+            value={postText}
+            onChange={e => setPostText(e.target.value)}
+            placeholder="Paste the post you want to reply to..."
+            rows={4}
+            className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
+          />
+
+          <label className="block mt-3 text-xs font-medium text-gray-600">
+            What you want to say
+          </label>
+          <textarea
+            value={intent}
+            onChange={e => setIntent(e.target.value)}
+            placeholder="e.g. agree, mention I switched to Obsidian and it loads instantly"
+            rows={2}
+            className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
+          />
+
+          <div className="mt-2 flex items-center justify-end">
+            <button
+              onClick={generateComment}
+              disabled={commenting || !postText.trim() || !intent.trim()}
+              className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors"
+            >
+              {commenting ? 'Drafting...' : 'Generate comment →'}
+            </button>
+          </div>
+
+          {commentError && (
+            <p className="mt-3 text-sm text-red-500">{commentError}</p>
+          )}
+
+          {comment && (
+            <div className="mt-4 border border-gray-200 rounded-lg p-4 bg-white">
+              <p className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">
+                {comment.draft}
+              </p>
+              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-3 text-xs text-gray-500">
+                <span>{comment.word_count} words</span>
+                <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
+                  tone: {comment.tone}
+                </span>
+                <button
+                  onClick={copyComment}
+                  className="ml-auto text-orange-500 hover:underline"
+                >
+                  {commentCopied ? '✓ Copied!' : 'Copy comment ↗'}
                 </button>
               </div>
             </div>
