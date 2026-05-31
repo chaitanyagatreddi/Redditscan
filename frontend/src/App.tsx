@@ -73,6 +73,7 @@ export default function App() {
   const [draft, setDraft] = useState<Draft | null>(null)
   const [draftError, setDraftError] = useState('')
   const [draftCopied, setDraftCopied] = useState(false)
+  const [draftPlatform, setDraftPlatform] = useState<'reddit' | 'hn'>('reddit')
 
   // Comment generator state
   const [postText, setPostText] = useState('')
@@ -81,6 +82,7 @@ export default function App() {
   const [comment, setComment] = useState<Draft | null>(null)
   const [commentError, setCommentError] = useState('')
   const [commentCopied, setCommentCopied] = useState(false)
+  const [commentPlatform, setCommentPlatform] = useState<'reddit' | 'hn'>('reddit')
 
   // Auto-search from URL param: ?q=Notion
   useEffect(() => {
@@ -147,7 +149,7 @@ export default function App() {
       const res = await fetch(`${API}/draft`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idea, context_snippets }),
+        body: JSON.stringify({ idea, context_snippets, platform: draftPlatform }),
       })
       if (!res.ok) {
         const err = await res.json()
@@ -177,7 +179,7 @@ export default function App() {
       const res = await fetch(`${API}/comment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ post: postText, intent }),
+        body: JSON.stringify({ post: postText, intent, platform: commentPlatform }),
       })
       if (!res.ok) {
         const err = await res.json()
@@ -313,10 +315,26 @@ export default function App() {
 
         {/* Notepad — always visible */}
         <div className="mt-10 border-t border-gray-200 pt-8">
-          <h2 className="text-lg font-semibold text-gray-900">📝 Notepad</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">📝 Notepad</h2>
+            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setDraftPlatform('reddit')}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${draftPlatform === 'reddit' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                🟠 Reddit
+              </button>
+              <button
+                onClick={() => setDraftPlatform('hn')}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${draftPlatform === 'hn' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                🔶 HN
+              </button>
+            </div>
+          </div>
           <p className="text-sm text-gray-500 mt-1">
-            Drop a 2-line idea. We'll draft a Reddit-style post that sounds human.
-            {intel && ' Tone will match the quotes above.'}
+            Drop a 2-line idea. We'll draft a {draftPlatform === 'hn' ? 'Hacker News' : 'Reddit'}-style post that sounds human.
+            {intel && draftPlatform === 'reddit' && ' Tone will match the quotes above.'}
           </p>
 
           <textarea
@@ -367,9 +385,25 @@ export default function App() {
 
         {/* Comment generator */}
         <div className="mt-10 border-t border-gray-200 pt-8">
-          <h2 className="text-lg font-semibold text-gray-900">💬 Reply to a post</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">💬 Reply to a post</h2>
+            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setCommentPlatform('reddit')}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${commentPlatform === 'reddit' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                🟠 Reddit
+              </button>
+              <button
+                onClick={() => setCommentPlatform('hn')}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${commentPlatform === 'hn' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                🔶 HN
+              </button>
+            </div>
+          </div>
           <p className="text-sm text-gray-500 mt-1">
-            Paste a Reddit post + what you want to say. We draft a comment that fits.
+            Paste a {commentPlatform === 'hn' ? 'Hacker News' : 'Reddit'} post + what you want to say. We draft a comment that fits.
           </p>
 
           <label className="block mt-4 text-xs font-medium text-gray-600">
