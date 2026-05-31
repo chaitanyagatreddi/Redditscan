@@ -383,8 +383,15 @@ export default function App() {
             className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
           />
 
-          <label className="block mt-3 text-xs font-medium text-gray-600">
+          <label className="mt-3 flex items-center gap-1.5 text-xs font-medium text-gray-600">
             What you want to say
+            <span
+              title="Explain your comment in 1–2 lines. The shorter and clearer, the better the draft."
+              className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-gray-300 text-gray-400 text-[10px] font-bold cursor-help hover:bg-gray-100 hover:text-gray-600"
+              aria-label="help"
+            >
+              ?
+            </span>
           </label>
           <textarea
             value={intent}
