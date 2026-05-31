@@ -333,7 +333,7 @@ export default function App() {
             </div>
           </div>
           <p className="text-sm text-gray-500 mt-1">
-            Drop a 2-line idea. We'll draft a {draftPlatform === 'hn' ? 'Hacker News' : 'Reddit'}-style post that sounds human.
+            Drop a 2-line idea. We'll draft a {draftPlatform === 'hn' ? 'Hacker News style' : 'Reddit style'} post that sounds human.
             {intel && draftPlatform === 'reddit' && ' Tone will match the quotes above.'}
           </p>
 
@@ -403,7 +403,7 @@ export default function App() {
             </div>
           </div>
           <p className="text-sm text-gray-500 mt-1">
-            Paste a {commentPlatform === 'hn' ? 'Hacker News' : 'Reddit'} post + what you want to say. We draft a comment that fits.
+            Paste a post + what you want to say. We draft a {commentPlatform === 'hn' ? 'Hacker News style' : 'Reddit style'} comment that fits.
           </p>
 
           <label className="block mt-4 text-xs font-medium text-gray-600">
