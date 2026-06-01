@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -32,7 +32,7 @@ const TAB_LABELS: Record<Tab, string> = {
   quotes: '💬 Quotes',
 }
 
-function ResultCard({ item }: { item: ResultItem }) {
+function ResultCard({ item, onReply }: { item: ResultItem; onReply?: (text: string) => void }) {
   return (
     <div className="border border-gray-200 rounded-lg p-4 hover:border-orange-300 transition-colors">
       <p className="text-gray-800 text-sm leading-relaxed">{item.text}</p>
@@ -52,6 +52,15 @@ function ResultCard({ item }: { item: ResultItem }) {
         >
           view thread →
         </a>
+        {onReply && (
+          <button
+            onClick={() => onReply(item.text)}
+            className="text-gray-400 hover:text-orange-500 transition-colors"
+            title="Reply to this"
+          >
+            ↩ Reply
+          </button>
+        )}
       </div>
     </div>
   )
@@ -86,6 +95,7 @@ export default function App() {
   const [scheduleTime, setScheduleTime] = useState('')
 
   // Comment generator state
+  const commentRef = useRef<HTMLDivElement>(null)
   const [postText, setPostText] = useState('')
   const [intent, setIntent] = useState('')
   const [commenting, setCommenting] = useState(false)
@@ -238,6 +248,14 @@ export default function App() {
     }
   }
 
+  function handleReply(text: string) {
+    setPostText(text)
+    setComment(null)
+    setCommentError('')
+    setIntent('')
+    setTimeout(() => commentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
+
   function copyComment() {
     if (!comment) return
     navigator.clipboard.writeText(comment.draft)
@@ -351,7 +369,7 @@ export default function App() {
             ) : (
               <div className="space-y-3">
                 {activeResults.map((item, i) => (
-                  <ResultCard key={i} item={item} />
+                  <ResultCard key={i} item={item} onReply={handleReply} />
                 ))}
               </div>
             )}
@@ -483,7 +501,7 @@ export default function App() {
         </div>
 
         {/* Comment generator */}
-        <div className="mt-10 border-t border-gray-200 pt-8">
+        <div ref={commentRef} className="mt-10 border-t border-gray-200 pt-8">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900">💬 Reply to a post</h2>
             <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
