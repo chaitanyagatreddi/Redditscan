@@ -79,7 +79,10 @@ export default function App() {
   const [scheduling, setScheduling] = useState(false)
   const [scheduleResult, setScheduleResult] = useState<{ post_id: string; status: string } | null>(null)
   const [scheduleError, setScheduleError] = useState('')
-  const [subreddit, setSubreddit] = useState('test')
+  const [subreddit, setSubreddit] = useState('')
+  const [subredditSearch, setSubredditSearch] = useState('')
+  const [subreddits, setSubreddits] = useState<string[]>([])
+  const [showSubredditDropdown, setShowSubredditDropdown] = useState(false)
   const [scheduleTime, setScheduleTime] = useState('')
 
   // Comment generator state
@@ -99,6 +102,14 @@ export default function App() {
       setQuery(q)
       doSearch(q)
     }
+  }, [])
+
+  // Load subreddits from Zernio
+  useEffect(() => {
+    fetch(`${API}/subreddits`)
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setSubreddits(data) })
+      .catch(() => {})
   }, [])
 
   async function doSearch(q: string, expand = false) {
@@ -419,13 +430,32 @@ export default function App() {
                 <div className="mt-4 pt-4 border-t border-gray-100">
                   <p className="text-xs font-medium text-gray-600 mb-2">📅 Schedule to Reddit via Zernio</p>
                   <div className="flex gap-2 flex-wrap">
-                    <input
-                      type="text"
-                      value={subreddit}
-                      onChange={e => setSubreddit(e.target.value)}
-                      placeholder="subreddit (e.g. SaaS)"
-                      className="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400 w-36"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={subredditSearch || subreddit}
+                        onChange={e => { setSubredditSearch(e.target.value); setSubreddit(''); setShowSubredditDropdown(true) }}
+                        onFocus={() => setShowSubredditDropdown(true)}
+                        onBlur={() => setTimeout(() => setShowSubredditDropdown(false), 150)}
+                        placeholder="r/SaaS"
+                        className="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400 w-36"
+                      />
+                      {showSubredditDropdown && subreddits.length > 0 && (
+                        <div className="absolute z-10 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          {subreddits
+                            .filter(s => s.toLowerCase().includes((subredditSearch || subreddit).toLowerCase()))
+                            .map(s => (
+                              <button
+                                key={s}
+                                onMouseDown={() => { setSubreddit(s); setSubredditSearch(''); setShowSubredditDropdown(false) }}
+                                className="w-full text-left px-3 py-2 text-xs hover:bg-orange-50 hover:text-orange-600"
+                              >
+                                r/{s}
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </div>
                     <input
                       type="datetime-local"
                       value={scheduleTime}

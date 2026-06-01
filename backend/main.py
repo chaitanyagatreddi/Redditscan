@@ -82,6 +82,22 @@ def comment(req: CommentRequest):
         raise HTTPException(status_code=500, detail=f"Comment draft failed: {e}")
 
 
+@app.get("/subreddits")
+async def subreddits():
+    if not ZERNIO_API_KEY or not ZERNIO_REDDIT_ACCOUNT_ID:
+        raise HTTPException(status_code=500, detail="Zernio not configured")
+    async with httpx.AsyncClient() as client:
+        res = await client.get(
+            f"https://zernio.com/api/v1/accounts/{ZERNIO_REDDIT_ACCOUNT_ID}/reddit-subreddits",
+            headers={"Authorization": f"Bearer {ZERNIO_API_KEY}"},
+            timeout=10,
+        )
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    data = res.json()
+    return [s["name"] for s in data.get("subreddits", []) if not s["name"].startswith("u_")]
+
+
 class ScheduleRequest(BaseModel):
     content: str
     subreddit: str
