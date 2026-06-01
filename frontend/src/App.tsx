@@ -75,6 +75,13 @@ export default function App() {
   const [draftCopied, setDraftCopied] = useState(false)
   const [draftPlatform, setDraftPlatform] = useState<'reddit' | 'hn'>('reddit')
 
+  // Schedule state
+  const [scheduling, setScheduling] = useState(false)
+  const [scheduleResult, setScheduleResult] = useState<{ post_id: string; status: string } | null>(null)
+  const [scheduleError, setScheduleError] = useState('')
+  const [subreddit, setSubreddit] = useState('test')
+  const [scheduleTime, setScheduleTime] = useState('')
+
   // Comment generator state
   const [postText, setPostText] = useState('')
   const [intent, setIntent] = useState('')
@@ -168,6 +175,33 @@ export default function App() {
     navigator.clipboard.writeText(draft.draft)
     setDraftCopied(true)
     setTimeout(() => setDraftCopied(false), 2000)
+  }
+
+  async function schedulePost() {
+    if (!draft) return
+    setScheduling(true)
+    setScheduleError('')
+    setScheduleResult(null)
+    try {
+      const res = await fetch(`${API}/schedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: draft.draft,
+          subreddit,
+          scheduled_for: scheduleTime ? new Date(scheduleTime).toISOString() : undefined,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.detail || 'Schedule failed')
+      }
+      setScheduleResult(await res.json())
+    } catch (e: unknown) {
+      setScheduleError(e instanceof Error ? e.message : 'Something went wrong')
+    } finally {
+      setScheduling(false)
+    }
   }
 
   async function generateComment() {
@@ -379,6 +413,41 @@ export default function App() {
                   {draftCopied ? '✓ Copied!' : 'Copy draft ↗'}
                 </button>
               </div>
+
+              {/* Schedule to Reddit */}
+              {draftPlatform === 'reddit' && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className="text-xs font-medium text-gray-600 mb-2">📅 Schedule to Reddit via Zernio</p>
+                  <div className="flex gap-2 flex-wrap">
+                    <input
+                      type="text"
+                      value={subreddit}
+                      onChange={e => setSubreddit(e.target.value)}
+                      placeholder="subreddit (e.g. SaaS)"
+                      className="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400 w-36"
+                    />
+                    <input
+                      type="datetime-local"
+                      value={scheduleTime}
+                      onChange={e => setScheduleTime(e.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400"
+                    />
+                    <button
+                      onClick={schedulePost}
+                      disabled={scheduling}
+                      className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 transition-colors"
+                    >
+                      {scheduling ? 'Scheduling...' : scheduleTime ? 'Schedule →' : 'Post now →'}
+                    </button>
+                  </div>
+                  {scheduleError && <p className="mt-2 text-xs text-red-500">{scheduleError}</p>}
+                  {scheduleResult && (
+                    <p className="mt-2 text-xs text-green-600">
+                      ✓ {scheduleResult.status === 'scheduled' ? 'Scheduled!' : 'Posted!'} ID: {scheduleResult.post_id}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
