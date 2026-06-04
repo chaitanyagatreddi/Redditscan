@@ -82,7 +82,7 @@ export default function App() {
   const [draft, setDraft] = useState<Draft | null>(null)
   const [draftError, setDraftError] = useState('')
   const [draftCopied, setDraftCopied] = useState(false)
-  const [draftPlatform, setDraftPlatform] = useState<'reddit' | 'hn'>('reddit')
+  const [draftPlatform, setDraftPlatform] = useState<'reddit' | 'hn' | 'pg'>('reddit')
 
   // Schedule state
   const [scheduling, setScheduling] = useState(false)
@@ -405,6 +405,32 @@ export default function App() {
             Drop a 2-line idea. We'll draft a {draftPlatform === 'hn' ? 'Hacker News style' : draftPlatform === 'pg' ? 'Paul Graham style' : 'Reddit style'} post that sounds human.
             {intel && draftPlatform === 'reddit' && ' Tone will match the quotes above.'}
           </p>
+
+          {draftPlatform === 'reddit' && subreddits.length > 0 && (
+            <div className="mt-3">
+              <input
+                type="text"
+                placeholder="Search subreddit..."
+                value={subredditSearch}
+                onChange={e => setSubredditSearch(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+              />
+              {subredditSearch && (
+                <div className="mt-1 border border-gray-200 rounded-lg bg-white shadow-sm max-h-32 overflow-y-auto">
+                  {subreddits.filter(s => s.toLowerCase().includes(subredditSearch.toLowerCase())).slice(0, 8).map(s => (
+                    <button
+                      key={s}
+                      onClick={() => { setSubreddit(s); setSubredditSearch(s); }}
+                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-orange-50 text-gray-700"
+                    >
+                      r/{s}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {subreddit && <p className="mt-1 text-xs text-orange-500">Posting to r/{subreddit}</p>}
+            </div>
+          )}
 
           <textarea
             value={idea}
