@@ -31,6 +31,35 @@ Rules:
 Output ONLY the post body. No title, no preamble, no markdown."""
 
 
+HN_SYSTEM_PROMPT = """You write Hacker News comments and posts that fit the community.
+
+Rules:
+- Intellectual, precise, no hype
+- First sentence makes the core point — no warm-up
+- Technical depth is respected; vagueness is not
+- Short paragraphs, plain English, no marketing words
+- Ask a specific technical or philosophical question if ending with one
+- No exclamation marks, no emoji
+- Sound like a senior engineer or thoughtful founder
+
+Output ONLY the post body. No title, no preamble, no markdown."""
+
+
+PG_SYSTEM_PROMPT = """You write in Paul Graham's style — simple words, clear ideas, no filler.
+
+Rules:
+- Use ordinary words. Never use a long word when a short one works.
+- Short sentences and short paragraphs. One idea per paragraph.
+- Conversational — write like you talk, not like you're publishing
+- Cut everything that doesn't add meaning. Be confident enough to delete.
+- Don't try to sound impressive. Just say what's true.
+- First sentence carries the whole idea — the rest unpacks it
+- No jargon, no hedging, no throat-clearing
+- Ideas should leap into the reader's head. The words should disappear.
+
+Output ONLY the post body. No title, no preamble, no markdown."""
+
+
 COMMENT_SYSTEM_PROMPT = """You write Reddit comments that sound human and don't get flagged.
 
 Rules:
@@ -46,15 +75,19 @@ Rules:
 Output ONLY the comment body. No preamble, no markdown."""
 
 
-def draft_post(idea: str, context_snippets: Optional[List[str]] = None) -> dict:
+def draft_post(idea: str, context_snippets: Optional[List[str]] = None, style: str = "reddit") -> dict:
     """
     idea: 2-line user input (what they want to say)
     context_snippets: optional list of related Reddit quotes for tone matching
+    style: "reddit" | "hn" | "pg"
     Returns: { draft, word_count, tone }
     """
+    prompt_map = {"reddit": SYSTEM_PROMPT, "hn": HN_SYSTEM_PROMPT, "pg": PG_SYSTEM_PROMPT}
+    system = prompt_map.get(style, SYSTEM_PROMPT)
+
     context = ""
     if context_snippets:
-        context = "\n\nFor tone reference, here's how Reddit posts on this topic usually sound:\n"
+        context = "\n\nFor tone reference, here's how posts on this topic usually sound:\n"
         context += "\n".join(f"- {s}" for s in context_snippets[:5])
 
     user_prompt = f"Idea:\n{idea}{context}\n\nWrite the post."
@@ -62,7 +95,7 @@ def draft_post(idea: str, context_snippets: Optional[List[str]] = None) -> dict:
     resp = get_client().chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system},
             {"role": "user", "content": user_prompt},
         ],
         temperature=0.8,

@@ -54,7 +54,8 @@ async def search(req: SearchRequest):
 
 class DraftRequest(BaseModel):
     idea: str
-    context_snippets: Optional[List[str]] = None  # optional Reddit quotes for tone
+    context_snippets: Optional[List[str]] = None
+    style: str = "reddit"  # "reddit" | "hn" | "pg"
 
 
 @app.post("/draft")
@@ -62,7 +63,7 @@ def draft(req: DraftRequest):
     if not req.idea.strip():
         raise HTTPException(status_code=400, detail="Idea cannot be empty")
     try:
-        return draft_post(req.idea, req.context_snippets)
+        return draft_post(req.idea, req.context_snippets, style=req.style)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Draft failed: {e}")
 
@@ -136,6 +137,9 @@ async def schedule(req: ScheduleRequest):
             },
             timeout=15,
         )
+
+    print(f"Zernio status: {res.status_code}")
+    print(f"Zernio response: {res.text[:1000]}")
 
     if res.status_code not in (200, 201):
         raise HTTPException(status_code=res.status_code, detail=res.text)

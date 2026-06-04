@@ -177,7 +177,7 @@ export default function App() {
       const res = await fetch(`${API}/draft`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idea, context_snippets, platform: draftPlatform }),
+        body: JSON.stringify({ idea, context_snippets, style: draftPlatform }),
       })
       if (!res.ok) {
         const err = await res.json()
@@ -393,10 +393,16 @@ export default function App() {
               >
                 🔶 HN
               </button>
+              <button
+                onClick={() => setDraftPlatform('pg')}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${draftPlatform === 'pg' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                ✍️ PG
+              </button>
             </div>
           </div>
           <p className="text-sm text-gray-500 mt-1">
-            Drop a 2-line idea. We'll draft a {draftPlatform === 'hn' ? 'Hacker News style' : 'Reddit style'} post that sounds human.
+            Drop a 2-line idea. We'll draft a {draftPlatform === 'hn' ? 'Hacker News style' : draftPlatform === 'pg' ? 'Paul Graham style' : 'Reddit style'} post that sounds human.
             {intel && draftPlatform === 'reddit' && ' Tone will match the quotes above.'}
           </p>
 
