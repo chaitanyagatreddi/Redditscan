@@ -420,26 +420,28 @@ export default function App() {
           <p className="hidden md:block text-sm text-[#9aa4b2] ml-1">
             Reddit, focus mode: pricing, complaints, comparisons, no noise.
           </p>
-          <div className="ml-auto flex gap-1 bg-[#14171c] border border-[#242a33] rounded-lg p-1">
-            <button
-              onClick={() => setView('results')}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${view === 'results' ? 'bg-[#ff4500] text-white' : 'text-[#9aa4b2] hover:text-[#e8eaed]'}`}
-            >
-              Results
-            </button>
-            <button
-              onClick={() => setView('board')}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${view === 'board' ? 'bg-[#ff4500] text-white' : 'text-[#9aa4b2] hover:text-[#e8eaed]'}`}
-            >
-              🗂 Board {board.length > 0 && <span className="opacity-80">({board.length})</span>}
-            </button>
-            <button
-              onClick={() => setView('settings')}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${view === 'settings' ? 'bg-[#ff4500] text-white' : 'text-[#9aa4b2] hover:text-[#e8eaed]'}`}
-            >
-              ⚙️ Settings
-            </button>
-          </div>
+          {!(showAuthGate && !session) && (
+            <div className="ml-auto flex gap-1 bg-[#14171c] border border-[#242a33] rounded-lg p-1">
+              <button
+                onClick={() => setView('results')}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${view === 'results' ? 'bg-[#ff4500] text-white' : 'text-[#9aa4b2] hover:text-[#e8eaed]'}`}
+              >
+                Results
+              </button>
+              <button
+                onClick={() => setView('board')}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${view === 'board' ? 'bg-[#ff4500] text-white' : 'text-[#9aa4b2] hover:text-[#e8eaed]'}`}
+              >
+                🗂 Board {board.length > 0 && <span className="opacity-80">({board.length})</span>}
+              </button>
+              <button
+                onClick={() => setView('settings')}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${view === 'settings' ? 'bg-[#ff4500] text-white' : 'text-[#9aa4b2] hover:text-[#e8eaed]'}`}
+              >
+                ⚙️ Settings
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
