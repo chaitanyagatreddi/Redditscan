@@ -1,0 +1,132 @@
+import { useState } from 'react'
+
+export type BoardColumn = 'new' | 'reviewing' | 'actioned'
+
+export type BoardCard = {
+  id: string
+  text: string
+  source_url: string
+  subreddit: string
+  reddit_score: number
+  category?: string
+  origin?: string
+  column: BoardColumn
+}
+
+const COLUMNS: { key: BoardColumn; label: string }[] = [
+  { key: 'new', label: 'New' },
+  { key: 'reviewing', label: 'Reviewing' },
+  { key: 'actioned', label: 'Actioned' },
+]
+
+const ORIGIN_BADGE: Record<string, string> = {
+  pricing: 'bg-[#50c878]/15 text-[#50c878]',
+  complaints: 'bg-[#ff4500]/15 text-[#ff6a33]',
+  comparisons: 'bg-[#7a9bff]/15 text-[#7a9bff]',
+  praise: 'bg-[#e879f9]/15 text-[#e879f9]',
+  quotes: 'bg-[#9aa4b2]/15 text-[#9aa4b2]',
+}
+
+export default function Board({
+  board,
+  setBoard,
+}: {
+  board: BoardCard[]
+  setBoard: (updater: (prev: BoardCard[]) => BoardCard[]) => void
+}) {
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [overCol, setOverCol] = useState<BoardColumn | null>(null)
+
+  function moveCard(id: string, column: BoardColumn) {
+    setBoard(prev => prev.map(c => (c.id === id ? { ...c, column } : c)))
+  }
+
+  function removeCard(id: string) {
+    setBoard(prev => prev.filter(c => c.id !== id))
+  }
+
+  if (board.length === 0) {
+    return (
+      <div className="mt-8 text-center py-16 border border-dashed border-[#242a33] rounded-xl">
+        <p className="text-[#9aa4b2] text-sm">No signals on the board yet.</p>
+        <p className="text-[#6b7280] text-xs mt-1">
+          Scan a product, then hit <span className="text-[#ff6a33]">+ Board</span> on any result to triage it here.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {COLUMNS.map(col => {
+        const cards = board.filter(c => c.column === col.key)
+        return (
+          <div
+            key={col.key}
+            onDragOver={e => { e.preventDefault(); setOverCol(col.key) }}
+            onDragLeave={() => setOverCol(c => (c === col.key ? null : c))}
+            onDrop={() => {
+              if (dragId) moveCard(dragId, col.key)
+              setDragId(null)
+              setOverCol(null)
+            }}
+            className={`rounded-xl border p-3 min-h-[200px] transition-colors ${
+              overCol === col.key ? 'border-[#ff4500] bg-[#ff4500]/5' : 'border-[#242a33] bg-[#14171c]'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-[#9aa4b2]">
+                {col.label}
+              </h4>
+              <span className="text-[11px] bg-[#0b0d10] border border-[#242a33] text-[#9aa4b2] rounded-full px-2 py-0.5">
+                {cards.length}
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              {cards.map(card => (
+                <div
+                  key={card.id}
+                  draggable
+                  onDragStart={() => setDragId(card.id)}
+                  onDragEnd={() => { setDragId(null); setOverCol(null) }}
+                  className={`group rounded-lg border border-[#242a33] bg-[#0b0d10] p-3 cursor-grab active:cursor-grabbing ${
+                    dragId === card.id ? 'opacity-50' : ''
+                  }`}
+                >
+                  <p className="text-[13px] text-[#e8eaed] leading-snug line-clamp-4">{card.text}</p>
+                  <div className="mt-2 flex items-center gap-2 text-[11px] text-[#9aa4b2]">
+                    <span>{card.subreddit}</span>
+                    {card.reddit_score > 0 && <span>▲ {card.reddit_score}</span>}
+                    {card.origin && (
+                      <span className={`px-1.5 py-0.5 rounded ${ORIGIN_BADGE[card.origin] || 'bg-[#242a33] text-[#9aa4b2]'}`}>
+                        {card.origin}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-2 flex items-center gap-3 text-[11px]">
+                    <a
+                      href={card.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#ff6a33] hover:underline"
+                    >
+                      view →
+                    </a>
+                    <button
+                      onClick={() => removeCard(card.id)}
+                      className="ml-auto text-[#6b7280] hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Remove from board"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}

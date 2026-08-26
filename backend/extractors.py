@@ -76,7 +76,13 @@ def extract_pricing(posts: list[dict], query: str) -> list[dict]:
                     "subreddit": post.get("subreddit_name_prefixed", ""),
                 })
     results.sort(key=lambda x: x["reddit_score"], reverse=True)
-    return results[:10]
+    seen = set()
+    unique = []
+    for r in results:
+        if r["text"] not in seen:
+            seen.add(r["text"])
+            unique.append(r)
+    return unique[:10]
 
 
 def extract_complaints(posts: list[dict], query: str) -> list[dict]:
@@ -155,7 +161,13 @@ def extract_quotes(posts: list[dict], query: str) -> list[dict]:
                 "subreddit": post.get("subreddit_name_prefixed", ""),
             })
     results.sort(key=lambda x: x["reddit_score"], reverse=True)
-    return results[:10]
+    seen = set()
+    unique = []
+    for r in results:
+        if r["text"] not in seen:
+            seen.add(r["text"])
+            unique.append(r)
+    return unique[:10]
 
 
 def extract_praise(posts: list[dict], query: str) -> list[dict]:

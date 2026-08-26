@@ -1,4 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
+import Board, { type BoardCard } from './Board'
+import { supabase } from './supabaseClient'
+import type { Session } from '@supabase/supabase-js'
+import OnboardingDeck from './OnboardingDeck'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -32,15 +36,15 @@ const TAB_LABELS: Record<Tab, string> = {
   quotes: '💬 Quotes',
 }
 
-function ResultCard({ item, onReply }: { item: ResultItem; onReply?: (text: string) => void }) {
+function ResultCard({ item, onReply, onAdd, added }: { item: ResultItem; onReply?: (text: string) => void; onAdd?: (item: ResultItem) => void; added?: boolean }) {
   return (
-    <div className="border border-gray-200 rounded-lg p-4 hover:border-orange-300 transition-colors">
-      <p className="text-gray-800 text-sm leading-relaxed">{item.text}</p>
-      <div className="mt-2 flex items-center gap-3 text-xs text-gray-400">
+    <div className="border border-[#242a33] bg-[#14171c] rounded-xl p-4 hover:border-[#ff4500]/50 transition-colors">
+      <p className="text-[#e8eaed] text-sm leading-relaxed">{item.text}</p>
+      <div className="mt-3 flex items-center gap-3 text-xs text-[#9aa4b2]">
         <span>{item.subreddit}</span>
         {item.reddit_score > 0 && <span>▲ {item.reddit_score}</span>}
         {item.category && (
-          <span className="bg-orange-50 text-orange-600 px-2 py-0.5 rounded">
+          <span className="bg-[#ff4500]/10 text-[#ff6a33] px-2 py-0.5 rounded">
             {item.category}
           </span>
         )}
@@ -48,14 +52,24 @@ function ResultCard({ item, onReply }: { item: ResultItem; onReply?: (text: stri
           href={item.source_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="ml-auto text-orange-500 hover:underline"
+          className="ml-auto text-[#ff6a33] hover:underline"
         >
           view thread →
         </a>
+        {onAdd && (
+          <button
+            onClick={() => onAdd(item)}
+            disabled={added}
+            className="text-[#9aa4b2] hover:text-[#ff6a33] transition-colors disabled:text-[#50c878] disabled:cursor-default"
+            title={added ? 'On the board' : 'Add to board'}
+          >
+            {added ? '✓ Board' : '+ Board'}
+          </button>
+        )}
         {onReply && (
           <button
             onClick={() => onReply(item.text)}
-            className="text-gray-400 hover:text-orange-500 transition-colors"
+            className="text-[#9aa4b2] hover:text-[#ff6a33] transition-colors"
             title="Reply to this"
           >
             ↩ Reply
@@ -68,6 +82,14 @@ function ResultCard({ item, onReply }: { item: ResultItem; onReply?: (text: stri
 
 type Draft = { draft: string; word_count: number; tone: string }
 
+const TAB_META: Record<Tab, { icon: string; label: string }> = {
+  pricing: { icon: '💰', label: 'Pricing' },
+  complaints: { icon: '😤', label: 'Complaints' },
+  comparisons: { icon: '⚖️', label: 'Comparisons' },
+  praise: { icon: '💚', label: 'Praise' },
+  quotes: { icon: '💬', label: 'Quotes' },
+}
+
 export default function App() {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
@@ -75,6 +97,41 @@ export default function App() {
   const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState<Tab>('quotes')
   const [copied, setCopied] = useState(false)
+
+  // View + Kanban board
+  const [view, setView] = useState<'results' | 'board' | 'settings'>('results')
+  const [board, setBoard] = useState<BoardCard[]>(() => {
+    try {
+      const raw = localStorage.getItem('redditscan_board')
+      return raw ? JSON.parse(raw) : []
+    } catch {
+      return []
+    }
+  })
+  useEffect(() => {
+    localStorage.setItem('redditscan_board', JSON.stringify(board))
+  }, [board])
+
+  function addToBoard(item: ResultItem, origin: Tab) {
+    const id = `${item.source_url}::${item.text.slice(0, 40)}`
+    setBoard(prev => (prev.some(c => c.id === id) ? prev : [
+      ...prev,
+      {
+        id,
+        text: item.text,
+        source_url: item.source_url,
+        subreddit: item.subreddit,
+        reddit_score: item.reddit_score,
+        category: item.category,
+        origin,
+        column: 'new',
+      },
+    ]))
+  }
+  const boardIds = new Set(board.map(c => c.id))
+
+  // Compose section (Notepad + Reply) collapsed by default
+  const [composeOpen, setComposeOpen] = useState(false)
 
   // Notepad state
   const [idea, setIdea] = useState('')
@@ -93,6 +150,63 @@ export default function App() {
   const [subreddits, setSubreddits] = useState<string[]>([])
   const [showSubredditDropdown, setShowSubredditDropdown] = useState(false)
   const [scheduleTime, setScheduleTime] = useState('')
+
+  // Auth + Zernio connection state
+  const [session, setSession] = useState<Session | null>(null)
+  const [authEmail, setAuthEmail] = useState('')
+  const [authSent, setAuthSent] = useState(false)
+  const [authError, setAuthError] = useState('')
+  const [zernioConnected, setZernioConnected] = useState(false)
+  const [zernioKeyInput, setZernioKeyInput] = useState('')
+  const [zernioConnecting, setZernioConnecting] = useState(false)
+  const [zernioError, setZernioError] = useState('')
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => setSession(s))
+    return () => listener.subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    if (session) setShowAuthGate(false)
+  }, [session])
+
+  async function authHeaders(): Promise<Record<string, string>> {
+    const { data } = await supabase.auth.getSession()
+    return data.session ? { Authorization: `Bearer ${data.session.access_token}` } : {}
+  }
+
+  async function sendMagicLink() {
+    if (!authEmail.trim()) return
+    setAuthError('')
+    const { error } = await supabase.auth.signInWithOtp({ email: authEmail })
+    if (error) setAuthError(error.message)
+    else setAuthSent(true)
+  }
+
+  async function connectZernio() {
+    if (!zernioKeyInput.trim()) return
+    setZernioConnecting(true)
+    setZernioError('')
+    try {
+      const headers = await authHeaders()
+      const res = await fetch(`${API}/zernio/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ zernio_api_key: zernioKeyInput }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.detail || 'Connection failed')
+      }
+      setZernioConnected(true)
+      setZernioKeyInput('')
+    } catch (e: unknown) {
+      setZernioError(e instanceof Error ? e.message : 'Something went wrong')
+    } finally {
+      setZernioConnecting(false)
+    }
+  }
 
   // Comment generator state
   const commentRef = useRef<HTMLDivElement>(null)
@@ -114,16 +228,38 @@ export default function App() {
     }
   }, [])
 
-  // Load subreddits from Zernio
+  // Load subreddits from Zernio (once a connection exists)
   useEffect(() => {
-    fetch(`${API}/subreddits`)
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setSubreddits(data) })
-      .catch(() => {})
-  }, [])
+    if (!session) return
+    authHeaders().then(headers => {
+      fetch(`${API}/subreddits`, { headers })
+        .then(r => {
+          if (r.ok) setZernioConnected(true)
+          return r.json()
+        })
+        .then(data => { if (Array.isArray(data)) setSubreddits(data) })
+        .catch(() => {})
+    })
+  }, [session])
+
+  const COMPARISON_PATTERN = /\bvs\.?\b|\bversus\b/i
+  const FREE_SEARCH_LIMIT = 3
+  const [searchCount, setSearchCount] = useState(() => {
+    const raw = localStorage.getItem('redditscan_search_count')
+    return raw ? parseInt(raw, 10) || 0 : 0
+  })
+  const [showAuthGate, setShowAuthGate] = useState(false)
 
   async function doSearch(q: string, expand = false) {
     if (!q.trim()) return
+    if (!session && searchCount >= FREE_SEARCH_LIMIT) {
+      setShowAuthGate(true)
+      return
+    }
+    if (!COMPARISON_PATTERN.test(q)) {
+      setError("Enter a comparison like 'Notion vs Asana' — Redditscan only scans head-to-head comparisons.")
+      return
+    }
     setLoading(true)
     setError('')
     if (!expand) setIntel(null)
@@ -140,6 +276,13 @@ export default function App() {
       const data = await res.json()
       setIntel(data)
       window.history.replaceState({}, '', `?q=${encodeURIComponent(q)}`)
+      if (!session) {
+        setSearchCount(prev => {
+          const next = prev + 1
+          localStorage.setItem('redditscan_search_count', String(next))
+          return next
+        })
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Something went wrong')
     } finally {
@@ -204,9 +347,10 @@ export default function App() {
     setScheduleError('')
     setScheduleResult(null)
     try {
+      const headers = await authHeaders()
       const res = await fetch(`${API}/schedule`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify({
           content: draft.draft,
           subreddit,
@@ -253,7 +397,8 @@ export default function App() {
     setComment(null)
     setCommentError('')
     setIntent('')
-    setTimeout(() => commentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+    setComposeOpen(true)
+    setTimeout(() => commentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
   }
 
   function copyComment() {
@@ -266,19 +411,74 @@ export default function App() {
   const activeResults = intel ? intel[activeTab] : []
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#0b0d10] text-[#e8eaed]">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-3xl mx-auto px-4 py-6">
-          <h1 className="text-2xl font-bold text-gray-900">🔍 Redditscan</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Reddit, but focus mode — pricing, complaints, comparisons, no noise.
+      <div className="sticky top-0 z-20 bg-[#0b0d10]/80 backdrop-blur border-b border-[#242a33]">
+        <div className="max-w-3xl mx-auto px-4 h-16 flex items-center gap-3">
+          <span className="w-2.5 h-2.5 rounded-full bg-[#ff4500]" />
+          <h1 className="text-lg font-bold tracking-tight">Redditscan</h1>
+          <p className="hidden md:block text-sm text-[#9aa4b2] ml-1">
+            Reddit, focus mode: pricing, complaints, comparisons, no noise.
           </p>
+          <div className="ml-auto flex gap-1 bg-[#14171c] border border-[#242a33] rounded-lg p-1">
+            <button
+              onClick={() => setView('results')}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${view === 'results' ? 'bg-[#ff4500] text-white' : 'text-[#9aa4b2] hover:text-[#e8eaed]'}`}
+            >
+              Results
+            </button>
+            <button
+              onClick={() => setView('board')}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${view === 'board' ? 'bg-[#ff4500] text-white' : 'text-[#9aa4b2] hover:text-[#e8eaed]'}`}
+            >
+              🗂 Board {board.length > 0 && <span className="opacity-80">({board.length})</span>}
+            </button>
+            <button
+              onClick={() => setView('settings')}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${view === 'settings' ? 'bg-[#ff4500] text-white' : 'text-[#9aa4b2] hover:text-[#e8eaed]'}`}
+            >
+              ⚙️ Settings
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 py-6">
-        {/* Search bar */}
+      {showAuthGate && !session ? (
+        <div className="max-w-3xl mx-auto px-4 py-10">
+          <OnboardingDeck
+            signInOnly
+            authEmail={authEmail}
+            setAuthEmail={setAuthEmail}
+            authSent={authSent}
+            authError={authError}
+            sendMagicLink={sendMagicLink}
+            session={!!session}
+            zernioKeyInput={zernioKeyInput}
+            setZernioKeyInput={setZernioKeyInput}
+            zernioConnecting={zernioConnecting}
+            zernioError={zernioError}
+            zernioConnected={zernioConnected}
+            connectZernio={connectZernio}
+            onDone={() => setShowAuthGate(false)}
+          />
+        </div>
+      ) : (
+      <div className="max-w-3xl mx-auto px-4 py-10">
+        {/* Hero + search bar */}
+        {!intel && !loading && view === 'results' && (
+          <div className="text-center mb-6">
+            <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">
+              Reddit signal.<br />
+              <span className="bg-gradient-to-r from-[#ff4500] to-[#ff6a33] bg-clip-text text-transparent">
+                Zero noise.
+              </span>
+            </h2>
+            <p className="text-[#9aa4b2] mt-3 max-w-md mx-auto">
+              Drop a product name. Get the pricing, complaints, and comparisons, ranked, no scrolling.
+            </p>
+          </div>
+        )}
+
         <div className="flex gap-2">
           <input
             type="text"
@@ -286,49 +486,146 @@ export default function App() {
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && doSearch(query)}
             placeholder="Enter a product name (e.g. Notion, Linear, Salesforce)"
-            className="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+            className="flex-1 bg-[#14171c] border border-[#242a33] rounded-xl px-4 py-3 text-sm text-[#e8eaed] placeholder-[#6b7280] focus:outline-none focus:ring-2 focus:ring-[#ff4500]/60"
           />
           <button
             onClick={() => doSearch(query)}
             disabled={loading}
-            className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors"
+            className="bg-[#ff4500] hover:bg-[#ff6a33] text-white px-6 py-3 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors whitespace-nowrap"
           >
-            {loading ? 'Scanning...' : 'Scan Reddit'}
+            {loading ? 'Scanning…' : 'Scan Reddit'}
           </button>
         </div>
 
-        {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+        {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
 
-        {intel && (
-          <div className="mt-6">
+        {/* Loading skeleton */}
+        {loading && (
+          <div className="mt-8 space-y-3 animate-pulse">
+            <div className="h-14 rounded-xl bg-[#14171c] border border-[#242a33]" />
+            {[0, 1, 2].map(i => (
+              <div key={i} className="h-20 rounded-xl bg-[#14171c] border border-[#242a33]" />
+            ))}
+          </div>
+        )}
+
+        {view === 'board' && <Board board={board} setBoard={setBoard} />}
+
+        {view === 'settings' && (
+          <div className="max-w-md">
+            <h2 className="text-lg font-semibold text-[#e8eaed] mb-4">API Keys</h2>
+            <div className="border border-[#242a33] bg-[#14171c] rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-medium text-[#e8eaed]">Zernio</p>
+                <span className={`text-xs px-2 py-0.5 rounded ${zernioConnected ? 'bg-green-500/10 text-green-400' : 'bg-[#242a33] text-[#9aa4b2]'}`}>
+                  {zernioConnected ? 'Connected' : 'Not connected'}
+                </span>
+              </div>
+              {!session ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs text-[#9aa4b2] mb-1">Sign in first to connect Zernio.</p>
+                  <input
+                    type="email"
+                    value={authEmail}
+                    onChange={e => setAuthEmail(e.target.value)}
+                    placeholder="you@email.com"
+                    className="bg-[#0b0d10] border border-[#242a33] rounded-lg px-3 py-2 text-xs text-[#e8eaed] placeholder-[#6b7280] focus:outline-none focus:ring-2 focus:ring-[#ff4500]/60"
+                  />
+                  <button
+                    onClick={sendMagicLink}
+                    disabled={authSent}
+                    className="bg-[#ff4500] hover:bg-[#ff6a33] text-white px-4 py-2 rounded-lg text-xs font-semibold disabled:opacity-40 transition-colors"
+                  >
+                    {authSent ? 'Check your email ✓' : 'Sign in with email'}
+                  </button>
+                  {authError && <p className="text-xs text-red-400">{authError}</p>}
+                </div>
+              ) : !zernioConnected ? (
+                <div className="flex flex-col gap-2">
+                  <input
+                    type="text"
+                    value={zernioKeyInput}
+                    onChange={e => setZernioKeyInput(e.target.value)}
+                    placeholder="Paste your Zernio API key"
+                    className="bg-[#0b0d10] border border-[#242a33] rounded-lg px-3 py-2 text-xs text-[#e8eaed] placeholder-[#6b7280] focus:outline-none focus:ring-2 focus:ring-[#ff4500]/60"
+                  />
+                  <button
+                    onClick={connectZernio}
+                    disabled={zernioConnecting}
+                    className="bg-[#ff4500] hover:bg-[#ff6a33] text-white px-4 py-2 rounded-lg text-xs font-semibold disabled:opacity-40 transition-colors"
+                  >
+                    {zernioConnecting ? 'Connecting…' : 'Connect'}
+                  </button>
+                  <a
+                    href="https://zernio.com/signup"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-[#9aa4b2] hover:text-[#ff6a33] underline"
+                  >
+                    Don't have a Zernio key? Get one →
+                  </a>
+                  {zernioError && <p className="text-xs text-red-400">{zernioError}</p>}
+                </div>
+              ) : (
+                <p className="text-xs text-[#9aa4b2]">Zernio is connected — you can schedule posts to Reddit.</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {view === 'results' && intel && !loading && (
+          <div className="mt-8">
             {/* Meta + share */}
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-gray-500">
-                Scanned <strong>{intel.total_posts_scanned}</strong> posts for{' '}
-                <strong>"{intel.query}"</strong>
+              <p className="text-sm text-[#9aa4b2]">
+                Scanned <strong className="text-[#e8eaed]">{intel.total_posts_scanned}</strong> posts for{' '}
+                <strong className="text-[#e8eaed]">"{intel.query}"</strong>
               </p>
               <button
                 onClick={handleShare}
-                className="text-sm text-orange-500 hover:underline"
+                className="text-sm text-[#ff6a33] hover:underline"
               >
                 {copied ? '✓ Copied!' : 'Share results ↗'}
               </button>
             </div>
 
+            {/* Summary stat tiles */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-5">
+              {(Object.keys(TAB_META) as Tab[]).map(tab => {
+                const active = activeTab === tab
+                return (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                      active
+                        ? 'border-[#ff4500] bg-[#ff4500]/10'
+                        : 'border-[#242a33] bg-[#14171c] hover:border-[#3a4250]'
+                    }`}
+                  >
+                    <div className="text-xl font-bold">{intel[tab].length}</div>
+                    <div className="text-xs text-[#9aa4b2] mt-0.5">
+                      {TAB_META[tab].icon} {TAB_META[tab].label}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+
             {/* Expand search preview */}
             {showExpandPreview && (
-              <div className="mb-4 border border-orange-200 bg-orange-50 rounded-lg p-4">
-                <p className="text-sm text-gray-800 font-medium">
-                  Only {intel.total_posts_scanned} posts found — want a wider net?
+              <div className="mb-5 border border-[#ff4500]/30 bg-[#ff4500]/5 rounded-xl p-4">
+                <p className="text-sm text-[#e8eaed] font-medium">
+                  Only {intel.total_posts_scanned} posts found. Want a wider net?
                 </p>
-                <p className="text-xs text-gray-600 mt-1">
+                <p className="text-xs text-white mt-1">
                   Expanding runs 5 more searches:
                 </p>
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {EXPAND_QUERIES.map(q => (
                     <span
                       key={q}
-                      className="text-xs bg-white border border-orange-200 text-orange-700 px-2 py-0.5 rounded"
+                      className="text-xs bg-[#14171c] border border-[#ff4500]/30 text-white px-2 py-0.5 rounded"
                     >
                       "{intel.query} {q}"
                     </span>
@@ -337,292 +634,322 @@ export default function App() {
                 <button
                   onClick={() => doSearch(intel.query, true)}
                   disabled={loading}
-                  className="mt-3 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50 transition-colors"
+                  className="mt-3 bg-[#ff4500] hover:bg-[#ff6a33] text-white text-sm font-semibold px-4 py-2 rounded-lg disabled:opacity-50 transition-colors"
                 >
-                  {loading ? 'Expanding...' : 'Expand search →'}
+                  {loading ? 'Expanding…' : 'Expand search →'}
                 </button>
               </div>
             )}
 
-            {/* Tabs */}
-            <div className="flex gap-1 mb-4 border-b border-gray-200">
-              {(Object.keys(TAB_LABELS) as Tab[]).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
-                    activeTab === tab
-                      ? 'border-orange-500 text-orange-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  {TAB_LABELS[tab]} <span className="text-xs">({intel[tab].length})</span>
-                </button>
-              ))}
-            </div>
+            {/* Active tab heading */}
+            <h3 className="text-sm font-semibold text-[#9aa4b2] mb-3">
+              {TAB_LABELS[activeTab]} <span className="text-[#6b7280]">· {intel[activeTab].length}</span>
+            </h3>
 
             {/* Results */}
             {activeResults.length === 0 ? (
-              <p className="text-sm text-gray-400 py-8 text-center">
+              <p className="text-sm text-[#6b7280] py-10 text-center">
                 No {activeTab} found for this product.
               </p>
             ) : (
               <div className="space-y-3">
                 {activeResults.map((item, i) => (
-                  <ResultCard key={i} item={item} onReply={handleReply} />
+                  <ResultCard
+                    key={i}
+                    item={item}
+                    onReply={handleReply}
+                    onAdd={it => addToBoard(it, activeTab)}
+                    added={boardIds.has(`${item.source_url}::${item.text.slice(0, 40)}`)}
+                  />
                 ))}
               </div>
             )}
           </div>
         )}
 
-        {/* Notepad — always visible */}
-        <div className="mt-10 border-t border-gray-200 pt-8">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">📝 Notepad</h2>
-            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-              <button
-                onClick={() => setDraftPlatform('reddit')}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${draftPlatform === 'reddit' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                🟠 Reddit
-              </button>
-              <button
-                onClick={() => setDraftPlatform('hn')}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${draftPlatform === 'hn' ? 'bg-red-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                🔶 HN
-              </button>
-              <button
-                onClick={() => setDraftPlatform('pg')}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${draftPlatform === 'pg' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                ✍️ PG
-              </button>
-            </div>
-          </div>
-          <p className="text-sm text-gray-500 mt-1">
-            Drop a 2-line idea. We'll draft a {draftPlatform === 'hn' ? 'Hacker News style' : draftPlatform === 'pg' ? 'Paul Graham style' : 'Reddit style'} post that sounds human.
-            {intel && draftPlatform === 'reddit' && ' Tone will match the quotes above.'}
-          </p>
-
-          {draftPlatform === 'reddit' && subreddits.length > 0 && (
-            <div className="mt-3">
-              <input
-                type="text"
-                placeholder="Search subreddit..."
-                value={subredditSearch}
-                onChange={e => setSubredditSearch(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-              />
-              {subredditSearch && (
-                <div className="mt-1 border border-gray-200 rounded-lg bg-white shadow-sm max-h-32 overflow-y-auto">
-                  {subreddits.filter(s => s.toLowerCase().includes(subredditSearch.toLowerCase())).slice(0, 8).map(s => (
-                    <button
-                      key={s}
-                      onClick={() => { setSubreddit(s); setSubredditSearch(s); }}
-                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-orange-50 text-gray-700"
-                    >
-                      r/{s}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {subreddit && <p className="mt-1 text-xs text-orange-500">Posting to r/{subreddit}</p>}
-            </div>
-          )}
-
-          <textarea
-            value={idea}
-            onChange={e => setIdea(e.target.value)}
-            placeholder="e.g. I switched from Notion to Obsidian after 6 months — speed killed it for me"
-            rows={3}
-            className="mt-3 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
-          />
-
-          <div className="mt-2 flex items-center justify-between">
-            <span className="text-xs text-gray-400">
-              {idea.trim().split(/\s+/).filter(Boolean).length} words
-            </span>
-            <button
-              onClick={generateDraft}
-              disabled={drafting || !idea.trim()}
-              className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors"
-            >
-              {drafting ? 'Drafting...' : 'Generate post →'}
-            </button>
-          </div>
-
-          {draftError && (
-            <p className="mt-3 text-sm text-red-500">{draftError}</p>
-          )}
-
-          {draft && (
-            <div className="mt-4 border border-gray-200 rounded-lg p-4 bg-white">
-              <p className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">
-                {draft.draft}
+        {/* Compose (Notepad + Reply) collapsed until needed */}
+        {view === 'results' && (
+        <div className="mt-10 border-t border-[#242a33] pt-6">
+          <button
+            onClick={() => setComposeOpen(o => !o)}
+            className="w-full flex items-center justify-between text-left group"
+          >
+            <div>
+              <h2 className="text-base font-semibold text-[#e8eaed]">✍️ Compose a post or reply</h2>
+              <p className="text-sm text-[#9aa4b2] mt-0.5">
+                {intel ? 'Draft a post (tone matched to your scan) or reply to any thread above.' : 'Draft a Reddit / HN post or reply that sounds human.'}
               </p>
-              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-3 text-xs text-gray-500">
-                <span>{draft.word_count} words</span>
-                <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
-                  tone: {draft.tone}
-                </span>
-                <button
-                  onClick={copyDraft}
-                  className="ml-auto text-orange-500 hover:underline"
-                >
-                  {draftCopied ? '✓ Copied!' : 'Copy draft ↗'}
-                </button>
-              </div>
+            </div>
+            <span className={`text-[#9aa4b2] group-hover:text-[#e8eaed] transition-transform ${composeOpen ? 'rotate-180' : ''}`}>
+              ▾
+            </span>
+          </button>
 
-              {/* Schedule to Reddit */}
-              {draftPlatform === 'reddit' && (
-                <div className="mt-4 pt-4 border-t border-gray-100">
-                  <p className="text-xs font-medium text-gray-600 mb-2">📅 Schedule to Reddit via Zernio</p>
-                  <div className="flex gap-2 flex-wrap">
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={subredditSearch || subreddit}
-                        onChange={e => { setSubredditSearch(e.target.value); setSubreddit(''); setShowSubredditDropdown(true) }}
-                        onFocus={() => setShowSubredditDropdown(true)}
-                        onBlur={() => setTimeout(() => setShowSubredditDropdown(false), 150)}
-                        placeholder="r/SaaS"
-                        className="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400 w-36"
-                      />
-                      {showSubredditDropdown && subreddits.length > 0 && (
-                        <div className="absolute z-10 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                          {subreddits
-                            .filter(s => s.toLowerCase().includes((subredditSearch || subreddit).toLowerCase()))
-                            .map(s => (
-                              <button
-                                key={s}
-                                onMouseDown={() => { setSubreddit(s); setSubredditSearch(''); setShowSubredditDropdown(false) }}
-                                className="w-full text-left px-3 py-2 text-xs hover:bg-orange-50 hover:text-orange-600"
-                              >
-                                r/{s}
-                              </button>
-                            ))}
-                        </div>
-                      )}
-                    </div>
-                    <input
-                      type="datetime-local"
-                      value={scheduleTime}
-                      onChange={e => setScheduleTime(e.target.value)}
-                      className="border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400"
-                    />
+          {composeOpen && (
+            <div className="mt-6 space-y-10">
+              {/* Notepad */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-[#e8eaed]">
+                    📝 New post
+                    {intel && draftPlatform === 'reddit' && (
+                      <span className="ml-2 text-xs font-normal text-[#ff6a33]">tone matched to scan</span>
+                    )}
+                  </h3>
+                  <div className="flex gap-1 bg-[#14171c] border border-[#242a33] rounded-lg p-1">
                     <button
-                      onClick={schedulePost}
-                      disabled={scheduling}
-                      className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 transition-colors"
+                      onClick={() => setDraftPlatform('reddit')}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${draftPlatform === 'reddit' ? 'bg-[#ff4500] text-white' : 'text-[#9aa4b2] hover:text-[#e8eaed]'}`}
                     >
-                      {scheduling ? 'Scheduling...' : scheduleTime ? 'Schedule →' : 'Post now →'}
+                      🟠 Reddit
+                    </button>
+                    <button
+                      onClick={() => setDraftPlatform('hn')}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${draftPlatform === 'hn' ? 'bg-[#ff6600] text-white' : 'text-[#9aa4b2] hover:text-[#e8eaed]'}`}
+                    >
+                      🔶 HN
+                    </button>
+                    <button
+                      onClick={() => setDraftPlatform('pg')}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${draftPlatform === 'pg' ? 'bg-[#3a4250] text-white' : 'text-[#9aa4b2] hover:text-[#e8eaed]'}`}
+                    >
+                      ✍️ PG
                     </button>
                   </div>
-                  {scheduleError && <p className="mt-2 text-xs text-red-500">{scheduleError}</p>}
-                  {scheduleResult && (
-                    <p className="mt-2 text-xs text-green-600">
-                      ✓ {scheduleResult.status === 'scheduled' ? 'Scheduled!' : 'Posted!'} ID: {scheduleResult.post_id}
-                    </p>
-                  )}
                 </div>
-              )}
-            </div>
-          )}
-        </div>
+                <p className="text-xs text-[#9aa4b2] mt-1">
+                  Drop a 2-line idea. We'll draft a {draftPlatform === 'hn' ? 'Hacker News style' : draftPlatform === 'pg' ? 'Paul Graham style' : 'Reddit style'} post that sounds human.
+                </p>
 
-        {/* Comment generator */}
-        <div ref={commentRef} className="mt-10 border-t border-gray-200 pt-8">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">💬 Reply to a post</h2>
-            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-              <button
-                onClick={() => setCommentPlatform('reddit')}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${commentPlatform === 'reddit' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                🟠 Reddit
-              </button>
-              <button
-                onClick={() => setCommentPlatform('hn')}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${commentPlatform === 'hn' ? 'bg-red-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                🔶 HN
-              </button>
-            </div>
-          </div>
-          <p className="text-sm text-gray-500 mt-1">
-            Paste a post + what you want to say. We draft a {commentPlatform === 'hn' ? 'Hacker News style' : 'Reddit style'} comment that fits.
-          </p>
+                {draftPlatform === 'reddit' && subreddits.length > 0 && (
+                  <div className="mt-3">
+                    <input
+                      type="text"
+                      placeholder="Search subreddit…"
+                      value={subredditSearch}
+                      onChange={e => setSubredditSearch(e.target.value)}
+                      className="w-full bg-[#14171c] border border-[#242a33] rounded-lg px-3 py-2 text-sm text-[#e8eaed] placeholder-[#6b7280] focus:outline-none focus:ring-2 focus:ring-[#ff4500]/60"
+                    />
+                    {subredditSearch && (
+                      <div className="mt-1 border border-[#242a33] rounded-lg bg-[#14171c] shadow-sm max-h-32 overflow-y-auto">
+                        {subreddits.filter(s => s.toLowerCase().includes(subredditSearch.toLowerCase())).slice(0, 8).map(s => (
+                          <button
+                            key={s}
+                            onClick={() => { setSubreddit(s); setSubredditSearch(s); }}
+                            className="w-full text-left px-3 py-1.5 text-sm hover:bg-[#ff4500]/10 text-[#e8eaed]"
+                          >
+                            r/{s}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {subreddit && <p className="mt-1 text-xs text-[#ff6a33]">Posting to r/{subreddit}</p>}
+                  </div>
+                )}
 
-          <label className="block mt-4 text-xs font-medium text-gray-600">
-            The Reddit post
-          </label>
-          <textarea
-            value={postText}
-            onChange={e => setPostText(e.target.value)}
-            placeholder="Paste the post you want to reply to..."
-            rows={4}
-            className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
-          />
+                <textarea
+                  value={idea}
+                  onChange={e => setIdea(e.target.value)}
+                  placeholder="e.g. I switched from Notion to Obsidian after 6 months, speed killed it for me"
+                  rows={3}
+                  className="mt-3 w-full bg-[#14171c] border border-[#242a33] rounded-lg px-3 py-2 text-sm text-[#e8eaed] placeholder-[#6b7280] focus:outline-none focus:ring-2 focus:ring-[#ff4500]/60 resize-none"
+                />
 
-          <label className="mt-3 flex items-center gap-1.5 text-xs font-medium text-gray-600">
-            What you want to say
-            <span className="relative group inline-flex items-center">
-              <span
-                className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-gray-300 text-gray-400 text-[10px] font-bold cursor-help hover:bg-gray-100 hover:text-gray-600"
-                aria-label="help"
-              >
-                ?
-              </span>
-              <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 hidden group-hover:block whitespace-nowrap bg-gray-900 text-white text-xs font-normal rounded px-2 py-1 shadow-lg z-10">
-                Explain your comment in 1–2 lines
-              </span>
-            </span>
-          </label>
-          <textarea
-            value={intent}
-            onChange={e => setIntent(e.target.value)}
-            placeholder="e.g. agree, mention I switched to Obsidian and it loads instantly"
-            rows={2}
-            className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
-          />
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="text-xs text-[#6b7280]">
+                    {idea.trim().split(/\s+/).filter(Boolean).length} words
+                  </span>
+                  <button
+                    onClick={generateDraft}
+                    disabled={drafting || !idea.trim()}
+                    className="bg-[#ff4500] hover:bg-[#ff6a33] text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40 transition-colors"
+                  >
+                    {drafting ? 'Drafting…' : 'Generate post →'}
+                  </button>
+                </div>
 
-          <div className="mt-2 flex items-center justify-end">
-            <button
-              onClick={generateComment}
-              disabled={commenting || !postText.trim() || !intent.trim()}
-              className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors"
-            >
-              {commenting ? 'Drafting...' : 'Generate comment →'}
-            </button>
-          </div>
+                {draftError && <p className="mt-3 text-sm text-red-400">{draftError}</p>}
 
-          {commentError && (
-            <p className="mt-3 text-sm text-red-500">{commentError}</p>
-          )}
+                {draft && (
+                  <div className="mt-4 border border-[#242a33] rounded-xl p-4 bg-[#14171c]">
+                    <p className="whitespace-pre-wrap text-sm text-[#e8eaed] leading-relaxed">
+                      {draft.draft}
+                    </p>
+                    <div className="mt-3 pt-3 border-t border-[#242a33] flex items-center gap-3 text-xs text-[#9aa4b2]">
+                      <span>{draft.word_count} words</span>
+                      <span className="bg-[#0b0d10] border border-[#242a33] text-[#9aa4b2] px-2 py-0.5 rounded">
+                        tone: {draft.tone}
+                      </span>
+                      <button
+                        onClick={copyDraft}
+                        className="ml-auto text-[#ff6a33] hover:underline"
+                      >
+                        {draftCopied ? '✓ Copied!' : 'Copy draft ↗'}
+                      </button>
+                    </div>
 
-          {comment && (
-            <div className="mt-4 border border-gray-200 rounded-lg p-4 bg-white">
-              <p className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">
-                {comment.draft}
-              </p>
-              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-3 text-xs text-gray-500">
-                <span>{comment.word_count} words</span>
-                <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
-                  tone: {comment.tone}
-                </span>
-                <button
-                  onClick={copyComment}
-                  className="ml-auto text-orange-500 hover:underline"
-                >
-                  {commentCopied ? '✓ Copied!' : 'Copy comment ↗'}
-                </button>
+                    {/* Schedule to Reddit */}
+                    {draftPlatform === 'reddit' && (
+                      <div className="mt-4 pt-4 border-t border-[#242a33]">
+                        <p className="text-xs font-medium text-[#9aa4b2] mb-2">📅 Schedule to Reddit via Zernio</p>
+
+                        {(!session || !zernioConnected) ? (
+                          <p className="text-xs text-[#9aa4b2]">
+                            {!session ? 'Sign in' : 'Connect Zernio'} in{' '}
+                            <button onClick={() => setView('settings')} className="text-[#ff6a33] underline">
+                              Settings
+                            </button>{' '}
+                            to schedule this post to Reddit.
+                          </p>
+                        ) : (
+                        <div className="flex gap-2 flex-wrap">
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={subredditSearch || subreddit}
+                              onChange={e => { setSubredditSearch(e.target.value); setSubreddit(''); setShowSubredditDropdown(true) }}
+                              onFocus={() => setShowSubredditDropdown(true)}
+                              onBlur={() => setTimeout(() => setShowSubredditDropdown(false), 150)}
+                              placeholder="r/SaaS"
+                              className="bg-[#0b0d10] border border-[#242a33] rounded-lg px-3 py-1.5 text-xs text-[#e8eaed] placeholder-[#6b7280] focus:outline-none focus:ring-2 focus:ring-[#ff4500]/60 w-36"
+                            />
+                            {showSubredditDropdown && subreddits.length > 0 && (
+                              <div className="absolute z-10 mt-1 w-48 bg-[#14171c] border border-[#242a33] rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                {subreddits
+                                  .filter(s => s.toLowerCase().includes((subredditSearch || subreddit).toLowerCase()))
+                                  .map(s => (
+                                    <button
+                                      key={s}
+                                      onMouseDown={() => { setSubreddit(s); setSubredditSearch(''); setShowSubredditDropdown(false) }}
+                                      className="w-full text-left px-3 py-2 text-xs hover:bg-[#ff4500]/10 hover:text-[#ff6a33] text-[#e8eaed]"
+                                    >
+                                      r/{s}
+                                    </button>
+                                  ))}
+                              </div>
+                            )}
+                          </div>
+                          <input
+                            type="datetime-local"
+                            value={scheduleTime}
+                            onChange={e => setScheduleTime(e.target.value)}
+                            className="bg-[#0b0d10] border border-[#242a33] rounded-lg px-3 py-1.5 text-xs text-[#e8eaed] focus:outline-none focus:ring-2 focus:ring-[#ff4500]/60"
+                          />
+                          <button
+                            onClick={schedulePost}
+                            disabled={scheduling}
+                            className="bg-[#ff4500] hover:bg-[#ff6a33] text-white px-4 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 transition-colors"
+                          >
+                            {scheduling ? 'Scheduling…' : scheduleTime ? 'Schedule →' : 'Post now →'}
+                          </button>
+                        </div>
+                        )}
+                        {scheduleError && <p className="mt-2 text-xs text-red-400">{scheduleError}</p>}
+                        {scheduleResult && (
+                          <p className="mt-2 text-xs text-green-400">
+                            ✓ {scheduleResult.status === 'scheduled' ? 'Scheduled!' : 'Posted!'} ID: {scheduleResult.post_id}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Comment generator */}
+              <div ref={commentRef}>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-[#e8eaed]">💬 Reply to a post</h3>
+                  <div className="flex gap-1 bg-[#14171c] border border-[#242a33] rounded-lg p-1">
+                    <button
+                      onClick={() => setCommentPlatform('reddit')}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${commentPlatform === 'reddit' ? 'bg-[#ff4500] text-white' : 'text-[#9aa4b2] hover:text-[#e8eaed]'}`}
+                    >
+                      🟠 Reddit
+                    </button>
+                    <button
+                      onClick={() => setCommentPlatform('hn')}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${commentPlatform === 'hn' ? 'bg-[#ff6600] text-white' : 'text-[#9aa4b2] hover:text-[#e8eaed]'}`}
+                    >
+                      🔶 HN
+                    </button>
+                  </div>
+                </div>
+                <p className="text-xs text-[#9aa4b2] mt-1">
+                  Paste a post + what you want to say. We draft a {commentPlatform === 'hn' ? 'Hacker News style' : 'Reddit style'} comment that fits.
+                </p>
+
+                <label className="block mt-4 text-xs font-medium text-[#9aa4b2]">
+                  The post
+                </label>
+                <textarea
+                  value={postText}
+                  onChange={e => setPostText(e.target.value)}
+                  placeholder="Paste the post you want to reply to…"
+                  rows={4}
+                  className="mt-1 w-full bg-[#14171c] border border-[#242a33] rounded-lg px-3 py-2 text-sm text-[#e8eaed] placeholder-[#6b7280] focus:outline-none focus:ring-2 focus:ring-[#ff4500]/60 resize-none"
+                />
+
+                <label className="mt-3 flex items-center gap-1.5 text-xs font-medium text-[#9aa4b2]">
+                  What you want to say
+                  <span className="relative group inline-flex items-center">
+                    <span
+                      className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-[#3a4250] text-[#9aa4b2] text-[10px] font-bold cursor-help hover:bg-[#242a33]"
+                      aria-label="help"
+                    >
+                      ?
+                    </span>
+                    <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 hidden group-hover:block whitespace-nowrap bg-[#242a33] text-[#e8eaed] text-xs font-normal rounded px-2 py-1 shadow-lg z-10">
+                      Explain your comment in 1–2 lines
+                    </span>
+                  </span>
+                </label>
+                <textarea
+                  value={intent}
+                  onChange={e => setIntent(e.target.value)}
+                  placeholder="e.g. agree, mention I switched to Obsidian and it loads instantly"
+                  rows={2}
+                  className="mt-1 w-full bg-[#14171c] border border-[#242a33] rounded-lg px-3 py-2 text-sm text-[#e8eaed] placeholder-[#6b7280] focus:outline-none focus:ring-2 focus:ring-[#ff4500]/60 resize-none"
+                />
+
+                <div className="mt-2 flex items-center justify-end">
+                  <button
+                    onClick={generateComment}
+                    disabled={commenting || !postText.trim() || !intent.trim()}
+                    className="bg-[#ff4500] hover:bg-[#ff6a33] text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40 transition-colors"
+                  >
+                    {commenting ? 'Drafting…' : 'Generate comment →'}
+                  </button>
+                </div>
+
+                {commentError && <p className="mt-3 text-sm text-red-400">{commentError}</p>}
+
+                {comment && (
+                  <div className="mt-4 border border-[#242a33] rounded-xl p-4 bg-[#14171c]">
+                    <p className="whitespace-pre-wrap text-sm text-[#e8eaed] leading-relaxed">
+                      {comment.draft}
+                    </p>
+                    <div className="mt-3 pt-3 border-t border-[#242a33] flex items-center gap-3 text-xs text-[#9aa4b2]">
+                      <span>{comment.word_count} words</span>
+                      <span className="bg-[#0b0d10] border border-[#242a33] text-[#9aa4b2] px-2 py-0.5 rounded">
+                        tone: {comment.tone}
+                      </span>
+                      <button
+                        onClick={copyComment}
+                        className="ml-auto text-[#ff6a33] hover:underline"
+                      >
+                        {commentCopied ? '✓ Copied!' : 'Copy comment ↗'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
         </div>
+        )}
       </div>
+      )}
     </div>
   )
 }

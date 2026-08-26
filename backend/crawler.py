@@ -71,8 +71,9 @@ async def crawl_reddit(query: str, subreddits: list[str], expand: bool = False) 
             q = f"{query} {extra}".strip()
             posts = await search_reddit(client, q)
             for p in posts:
-                if p["url"] not in seen_urls:
-                    seen_urls.add(p["url"])
+                dedup_key = p["permalink"].split("?")[0].split("#")[0].rstrip("/")
+                if dedup_key not in seen_urls:
+                    seen_urls.add(dedup_key)
                     all_posts.append(p)
 
     return all_posts
