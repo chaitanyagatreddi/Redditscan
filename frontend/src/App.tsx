@@ -3,6 +3,7 @@ import Board, { type BoardCard } from './Board'
 import { supabase } from './supabaseClient'
 import type { Session } from '@supabase/supabase-js'
 import OnboardingDeck from './OnboardingDeck'
+import LoadingScreen from './LoadingScreen'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -248,7 +249,8 @@ export default function App() {
     const raw = localStorage.getItem('redditscan_search_count')
     return raw ? parseInt(raw, 10) || 0 : 0
   })
-  const [showAuthGate, setShowAuthGate] = useState(false)
+  const [showAuthGate, setShowAuthGate] = useState(true) // TEMP: forced true for preview, revert to false
+  const [gateLoading, setGateLoading] = useState(true)
 
   async function doSearch(q: string, expand = false) {
     if (!q.trim()) return
@@ -257,7 +259,7 @@ export default function App() {
       return
     }
     if (!COMPARISON_PATTERN.test(q)) {
-      setError("Enter a comparison like 'Notion vs Asana' — Redditscan only scans head-to-head comparisons.")
+      setError("Enter a comparison like 'Notion vs Asana' — GoHook only scans head-to-head comparisons.")
       return
     }
     setLoading(true)
@@ -416,7 +418,7 @@ export default function App() {
       <div className="sticky top-0 z-20 bg-[#0b0d10]/80 backdrop-blur border-b border-[#242a33]">
         <div className="max-w-3xl mx-auto px-4 h-16 flex items-center gap-3">
           <span className="w-2.5 h-2.5 rounded-full bg-[#ff4500]" />
-          <h1 className="text-lg font-bold tracking-tight">Redditscan</h1>
+          <h1 className="text-lg font-bold tracking-tight">GoHook</h1>
           <p className="hidden md:block text-sm text-[#9aa4b2] ml-1">
             Reddit, focus mode: pricing, complaints, comparisons, no noise.
           </p>
@@ -447,6 +449,9 @@ export default function App() {
 
       {showAuthGate && !session ? (
         <div className="max-w-3xl mx-auto px-4 py-10">
+          {gateLoading ? (
+            <LoadingScreen onDone={() => setGateLoading(false)} />
+          ) : (
           <OnboardingDeck
             signInOnly
             authEmail={authEmail}
@@ -463,6 +468,7 @@ export default function App() {
             connectZernio={connectZernio}
             onDone={() => setShowAuthGate(false)}
           />
+          )}
         </div>
       ) : (
       <div className="max-w-3xl mx-auto px-4 py-10">

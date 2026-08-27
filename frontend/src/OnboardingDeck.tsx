@@ -1,5 +1,6 @@
 import { useState, type MouseEvent } from 'react'
 import { motion, AnimatePresence, type PanInfo } from 'motion/react'
+import { supabase } from './supabaseClient'
 
 type StepKind = 'signin' | 'zernio'
 
@@ -103,6 +104,14 @@ const OnboardingDeck = ({
     const handleZernioClick = (e?: MouseEvent) => {
         e?.stopPropagation()
         connectZernio()
+    }
+
+    const [oauthPending, setOauthPending] = useState<'google' | 'linkedin_oidc' | null>(null)
+
+    const handleOAuthClick = (provider: 'google' | 'linkedin_oidc') => async (e?: MouseEvent) => {
+        e?.stopPropagation()
+        setOauthPending(provider)
+        await supabase.auth.signInWithOAuth({ provider })
     }
 
     // Auto-advance once each step's action succeeds
@@ -240,6 +249,49 @@ const OnboardingDeck = ({
                                                     {session ? 'Signed in ✓' : authSent ? 'Check your email ✓' : 'Sign in with email'}
                                                 </motion.button>
                                                 {authError && <p className="text-xs text-red-900 bg-white/70 rounded px-2 py-1">{authError}</p>}
+
+                                                <div className="flex items-center gap-2 my-1">
+                                                    <div className="flex-1 h-px bg-white/30" />
+                                                    <span className="text-[10px] uppercase tracking-wide" style={{ color: step.colors.light }}>or</span>
+                                                    <div className="flex-1 h-px bg-white/30" />
+                                                </div>
+
+                                                <motion.button
+                                                    type="button"
+                                                    whileTap={{ scale: 0.96 }}
+                                                    whileHover={{ y: -1 }}
+                                                    onClick={handleOAuthClick('google')}
+                                                    disabled={oauthPending !== null}
+                                                    className="w-full flex items-center justify-center gap-2 bg-white text-gray-800 font-medium text-[15px] py-3 px-4 rounded-lg shadow-md border border-gray-200 hover:bg-gray-50 transition disabled:opacity-60"
+                                                >
+                                                    {oauthPending === 'google' ? (
+                                                        <motion.span
+                                                            className="w-4 h-4 rounded-full border-2 border-gray-300 border-t-gray-700"
+                                                            animate={{ rotate: 360 }}
+                                                            transition={{ repeat: Infinity, duration: 0.6, ease: 'linear' }}
+                                                        />
+                                                    ) : (
+                                                        'Continue with Google'
+                                                    )}
+                                                </motion.button>
+                                                <motion.button
+                                                    type="button"
+                                                    whileTap={{ scale: 0.96 }}
+                                                    whileHover={{ y: -1 }}
+                                                    onClick={handleOAuthClick('linkedin_oidc')}
+                                                    disabled={oauthPending !== null}
+                                                    className="w-full flex items-center justify-center gap-2 bg-[#0a66c2] text-white font-medium text-[15px] py-3 px-4 rounded-lg shadow-md border border-[#0a66c2] hover:bg-[#0958a8] transition disabled:opacity-60"
+                                                >
+                                                    {oauthPending === 'linkedin_oidc' ? (
+                                                        <motion.span
+                                                            className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white"
+                                                            animate={{ rotate: 360 }}
+                                                            transition={{ repeat: Infinity, duration: 0.6, ease: 'linear' }}
+                                                        />
+                                                    ) : (
+                                                        'Continue with LinkedIn'
+                                                    )}
+                                                </motion.button>
                                             </div>
                                         ) : (
                                             <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
